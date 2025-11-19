@@ -24,17 +24,13 @@ DEPS_PATH=$(BIN_PATH)/tcpsnitch_deps
 
 # Compiler & linker flags
 CC=gcc
-# std=gnu11 pour plus de flexibilité
+# std=gnu11 pour plus de flexibilité tout en restant strict
 C_FLAGS=-g -fPIC --shared -Wl,-Bsymbolic -std=gnu11 -fvisibility=hidden -D_GNU_SOURCE
 
-# Suppression de -Werror et ajout de tolérances
-W_FLAGS=-Wall -Wextra -Wfloat-equal -Wshadow -Wpointer-arith \
+# Add -Werror (Mode Strict)
+W_FLAGS=-Wall -Wextra -Werror -Wfloat-equal -Wshadow -Wpointer-arith \
 	-Wstrict-prototypes -Wwrite-strings -Waggregate-return -Wcast-qual \
-	-Wunreachable-code \
-	-Wno-error=implicit-function-declaration \
-	-Wno-error=int-conversion \
-	-Wno-error=incompatible-pointer-types \
-	-Wno-error=unused-result
+	-Wunreachable-code
 
 # Dependencies
 # Note: The Debian packages "libpcap0.8-dev" and "libpcap0.8-dev:i386" are incompatible.
