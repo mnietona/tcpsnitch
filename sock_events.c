@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 
 #include "sock_events.h"
 #include <assert.h>
@@ -290,7 +289,8 @@ static void fill_sockopt(Sockopt *sockopt, int level, int optname,
 
 typedef int (*orig_bind_type)(int fd, const struct sockaddr *addr,
                               socklen_t len);
-orig_bind_type orig_bind;
+                              
+static orig_bind_type orig_bind;
 
 #define MIN_PORT 32768  // cat /proc/sys/net/ipv4/ip_local_port_range
 #define MAX_PORT 60999

@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 
 #include "packet_sniffer.h"
 #include <pcap.h>

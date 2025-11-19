@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 
 #include "verbose_mode.h"
 #ifdef __ANDROID__
