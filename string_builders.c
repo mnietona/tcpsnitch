@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 
 #include "string_builders.h"
 #include <arpa/inet.h>
@@ -85,6 +84,7 @@ char *alloc_port_str(const struct sockaddr *addr) {
                         n = snprintf(port_str, PORT_WIDTH, "%d",
                                      ntohs(v4->sin_port));
                         if (n < 0) goto error2;
+                        break; // AJOUT DU BREAK ICI
                 }
                 case AF_INET6: {
                         const struct sockaddr_in6 *v6 =
@@ -92,6 +92,7 @@ char *alloc_port_str(const struct sockaddr *addr) {
                         n = snprintf(port_str, PORT_WIDTH, "%d",
                                      ntohs(v6->sin6_port));
                         if (n < 0) goto error2;
+                        break;
                 }
                 case AF_PACKET:
                         break;  // No notion of port here
@@ -124,8 +125,9 @@ char *alloc_addr_str(const struct sockaddr *addr) {
         strncat(addr_str, ":", (n - 1) - strlen(addr_str));
         strncat(addr_str, port_str, (n - 1) - strlen(addr_str));
 
-        free(addr_str);
-        free(port_str);
+        // free host_str and port_str ICI
+        free(host_str); 
+        free(port_str); 
         return addr_str;
 error2:
         free(host_str);
