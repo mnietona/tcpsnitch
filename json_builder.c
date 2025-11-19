@@ -893,7 +893,7 @@ static json_t *build_sock_ev(const SockEvent *ev) {
 #endif
                 case SOCK_EV_GETSOCKNAME:
                         r = build_sock_ev_getsockname(
-                            (const SockEvGetsockname *)ev); // <<< Corrigé
+                            (const SockEvGetsockname *)ev); // Modified
                         break;
                 case SOCK_EV_GETPEERNAME:
                         r = build_sock_ev_getpeername(
