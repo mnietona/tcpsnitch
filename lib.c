@@ -1,4 +1,3 @@
-#define _GNU_SOURCE  // For program_invocation_name
 
 #include <dirent.h>
 #include <dlfcn.h>
@@ -22,11 +21,13 @@
 #include "logger.h"
 #include "string_builders.h"
 
-// We don't want to call the getsockopt we defined as it would be intercepted.
+
+
 typedef int (*orig_getsockopt_type)(int sockfd, int level, int optname,
                                     void *optval, socklen_t *optlen);
 
-orig_getsockopt_type orig_getsockopt;
+// add static to avoid multiple definition error during linking
+static orig_getsockopt_type orig_getsockopt;
 
 int my_getsockopt(int sockfd, int level, int optname, void *optval,
                   socklen_t *optlen) {
@@ -44,7 +45,7 @@ error:
 
 typedef FILE *(*orig_fdopen_type)(int fd, const char *mode);
 
-orig_fdopen_type orig_fdopen;
+static orig_fdopen_type orig_fdopen;
 
 FILE *my_fdopen(int fd, const char *mode) {
         if (!orig_fdopen)
@@ -58,7 +59,7 @@ typedef int (*ioctl_type)(int fd, int request, ...);
 typedef int (*ioctl_type)(int fd, unsigned long int request, ...);
 #endif
 
-ioctl_type orig_ioctl;
+static ioctl_type orig_ioctl;
 
 #ifdef __ANDROID__
 int my_ioctl(int fd, int request, ...) {
@@ -81,7 +82,7 @@ error:
 }
 
 typedef int (*orig_fcntl_type)(int fd, int cmd, ...);
-orig_fcntl_type orig_fcntl;
+static orig_fcntl_type orig_fcntl;
 
 bool is_fd(int fd) {
         if (!orig_fcntl)
