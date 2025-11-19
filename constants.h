@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
@@ -7,10 +5,6 @@
 #include <asm-generic/ioctls.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <linux/ax25.h>
-#include <linux/if_eql.h>
-#include <linux/if_plip.h>
-#include <linux/ipx.h>
 #include <linux/mroute.h>
 #include <linux/sockios.h>
 #include <linux/wireless.h>
@@ -31,8 +25,6 @@
 
 #define ADD(constant) \
         { constant, #constant }
-/* We use #ifdef directives to produce code that is easily portable on multiple
- * libc versions which may define different set of constants. */
 
 typedef struct {
         int cons;

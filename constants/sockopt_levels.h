@@ -1,13 +1,6 @@
 #include "asm-generic/socket.h"
 #include "netinet/tcp.h"
-#include "linux/tipc.h"
-#include "linux/can.h"
-#include "linux/can/raw.h"
-#include "linux/irda.h"
-#include "linux/rds.h"
 #ifndef __ANDROID__
-#include "netrose/rose.h"
-#include "netatalk/at.h"
 #include "netinet/udp.h"
 #endif
 
