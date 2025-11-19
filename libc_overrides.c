@@ -4,7 +4,6 @@
  * Date: October, 2016
  */
 
-#define _GNU_SOURCE
 
 #include "lib.h"
 #include <arpa/inet.h>

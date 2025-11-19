@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 
 #include "init.h"
 #include <dirent.h>

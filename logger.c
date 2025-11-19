@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 
 #include "logger.h"
 #ifdef __ANDROID__

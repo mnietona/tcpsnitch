@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 
 #include "resizable_array.h"
 #include <errno.h>
