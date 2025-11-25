@@ -107,6 +107,7 @@ static SockEvent *alloc_event(SockEventType type, int return_value, int err,
                 CASE_EV(SOCK_EV_EPOLL_PWAIT, SockEvEpollPwait, -1);
                 CASE_EV(SOCK_EV_FDOPEN, SockEvFdopen, 0);
                 CASE_EV(SOCK_EV_SPLICE, SockEvSplice, -1);
+                CASE_EV(SOCK_EV_NETLINK, SockEvNetlink, -1);
                 CASE_EV(SOCK_EV_TCP_INFO, SockEvTcpInfo, -1);
         }
         ev->timestamp_usec = get_time_micros();
@@ -121,6 +122,10 @@ static SockEvent *alloc_event(SockEventType type, int return_value, int err,
 
 static void free_event(SockEvent *ev) {
         switch (ev->type) {
+                case SOCK_EV_NETLINK:
+                        free(((SockEvNetlink *)ev)->ip_address);
+                        break;
+
                 case SOCK_EV_GETSOCKOPT:
                         free(((SockEvGetsockopt *)ev)->sockopt.optval);
                         break;
@@ -532,6 +537,7 @@ const char *string_from_sock_event_type(SockEventType type) {
                 "epoll_pwait",
                 "fdopen",
                 "splice",
+                "netlink",
                 "tcp_info"
         };
         assert(sizeof(strings) / sizeof(char *) == SOCK_EV_TCP_INFO + 1);
@@ -1169,4 +1175,52 @@ void sock_ev_reset(void) {
                 sock_ev_forked_socket(i, &sock->sock_info);
                 free_socket(sock);
         }
+}
+
+// 4. Ajoutez ces fonctions TOUT À LA FIN du fichier
+void sock_ev_netlink_init(int fd) {
+    init_tcpsnitch();
+    
+    // On crée un socket "virtuel" dans la structure de données
+    Socket *sock = alloc_socket(fd);
+    
+    // On le marque comme spécial
+    sock->sock_info.domain = AF_NETLINK;
+    sock->sock_info.type = SOCK_RAW;
+    sock->sock_info.protocol = 0; 
+    sock->sock_info.filled = true;
+
+    // On enregistre l'événement de création
+    SockEvSocket *ev = (SockEvSocket *)alloc_event(SOCK_EV_SOCKET, fd, 0, 0);
+    fill_sock_info(&ev->sock_info, AF_NETLINK, SOCK_RAW, 0);
+    
+    log_event(INFO, SOCK_EV_SOCKET, fd, sock->id);
+    push_event(sock, (SockEvent *)ev);
+    ra_put_elem(fd, sock);
+}
+
+void sock_ev_netlink(int fd, int msg_type, int if_index, int family, const char *ip) {
+    if (!ra_is_present(fd)) return;
+    
+    Socket *sock = ra_get_and_lock_elem(fd);
+    SockEvNetlink *ev = (SockEvNetlink *)alloc_event(SOCK_EV_NETLINK, 0, 0, sock->events_count);
+    
+    ev->netlink_msg_type = msg_type;
+    ev->if_index = if_index;
+    ev->family = family;
+    
+    if (ip) {
+        int len = strlen(ip) + 1;
+        ev->ip_address = (char *)my_malloc(len);
+        strncpy(ev->ip_address, ip, len);
+    } else {
+        ev->ip_address = NULL;
+    }
+
+    push_event(sock, (SockEvent *)ev);
+    
+    // On force l'écriture immédiate dans le fichier pour ne rien perdre
+    dump_events_as_json(sock);
+    
+    ra_unlock_elem(fd);
 }

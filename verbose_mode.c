@@ -208,9 +208,15 @@ static void output_ev_fdopen(const SockEvFdopen *ev) {
         OUTPUT_EV("fdopen()=%d", ev->super.return_value);
 }
 
-// AJOUTÉ: Fonction pour splice
+// AJOUT 1 : Splice
 static void output_ev_splice(const SockEvSplice *ev) {
         OUTPUT_EV("splice()=%d", ev->super.return_value);
+}
+
+// AJOUT 2 : Netlink
+static void output_ev_netlink(const SockEvNetlink *ev) {
+        (void)ev; // Unused parameter trick
+        OUTPUT_EV("netlink_event"); 
 }
 
 void output_event(const SockEvent *ev) {
@@ -351,9 +357,12 @@ void output_event(const SockEvent *ev) {
                 case SOCK_EV_TCP_INFO:
                         output_ev_tcpinfo((const SockEvTcpInfo *)ev);
                         break;
-                // AJOUTÉ: Case pour splice
+                // LES DEUX AJOUTS MANQUANTS
                 case SOCK_EV_SPLICE:
                         output_ev_splice((const SockEvSplice *)ev);
+                        break;
+                case SOCK_EV_NETLINK:
+                        output_ev_netlink((const SockEvNetlink *)ev);
                         break;
         }
 }

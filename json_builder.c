@@ -9,6 +9,7 @@
 #include "lib.h"
 #include "logger.h"
 #include "string_builders.h"
+#include <linux/rtnetlink.h>
 
 static json_t *my_json_object(void) {
         json_t *obj = json_object();
@@ -834,6 +835,26 @@ static json_t *build_sock_ev_tcp_info(const SockEvTcpInfo *ev) {
         return json_ev;
 }
 
+static json_t *build_sock_ev_netlink(const SockEvNetlink *ev) {
+        BUILD_EV_PRELUDE()
+        
+        const char *type_s = "UNKNOWN";
+        if (ev->netlink_msg_type == RTM_NEWADDR) type_s = "NEW_ADDR";
+        else if (ev->netlink_msg_type == RTM_DELADDR) type_s = "DEL_ADDR";
+        else if (ev->netlink_msg_type == RTM_NEWROUTE) type_s = "NEW_ROUTE";
+        else if (ev->netlink_msg_type == RTM_DELROUTE) type_s = "DEL_ROUTE";
+        
+        add(json_details, "msg_type", json_string(type_s));
+        add(json_details, "if_index", json_integer(ev->if_index));
+        
+        if (ev->family == AF_INET) add(json_details, "family", json_string("IPv4"));
+        else if (ev->family == AF_INET6) add(json_details, "family", json_string("IPv6"));
+        
+        if (ev->ip_address) add(json_details, "ip", json_string(ev->ip_address));
+        
+        return json_ev;
+}
+
 static json_t *build_sock_ev(const SockEvent *ev) {
         json_t *r = NULL;
         switch (ev->type) {
@@ -980,6 +1001,9 @@ static json_t *build_sock_ev(const SockEvent *ev) {
                 case SOCK_EV_SPLICE:
                         r = build_sock_ev_splice((const SockEvSplice *)ev);
                         break;
+                case SOCK_EV_NETLINK:
+                r = build_sock_ev_netlink((const SockEvNetlink *)ev);
+                break;
         }
         return r;
 }

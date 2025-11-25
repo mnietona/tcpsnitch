@@ -66,6 +66,8 @@ typedef enum SockEventType {
         SOCK_EV_FDOPEN,
         // splice
         SOCK_EV_SPLICE,
+        // netlink
+        SOCK_EV_NETLINK,
         // others
         SOCK_EV_TCP_INFO
 } SockEventType;
@@ -410,6 +412,14 @@ struct SockEventNode {
 };
 
 typedef struct {
+        SockEvent super;
+        int netlink_msg_type; // RTM_NEWADDR, RTM_DELADDR, etc.
+        int if_index;         
+        int family;           // AF_INET (IPv4) ou AF_INET6 (IPv6)
+        char *ip_address;     // L'adresse IP
+} SockEvNetlink;
+
+typedef struct {
         // To be freed
         SockEventNode *head;  // Head for list of events.
         SockEventNode *tail;  // Tail for list of events.
@@ -561,6 +571,9 @@ void dump_all_sock_events(void);
 void sock_ev_free(void);  // Free state.
 // Free state and restore to default state (called after fork()).
 void sock_ev_reset(void);
+
+void sock_ev_netlink_init(int fd);
+void sock_ev_netlink(int fd, int msg_type, int if_index, int family, const char *ip);
 
 
 #endif
