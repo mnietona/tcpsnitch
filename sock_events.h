@@ -64,6 +64,8 @@ typedef enum SockEventType {
         SOCK_EV_EPOLL_PWAIT,
         // stdio.h
         SOCK_EV_FDOPEN,
+        // splice
+        SOCK_EV_SPLICE,
         // others
         SOCK_EV_TCP_INFO
 } SockEventType;
@@ -97,10 +99,6 @@ typedef struct {
         SockInfo sock_info;
 } SockEvForkedSocket;
 
-/* A ghost socket represents a socket for which we never saw its creation.
- * Maybe it was passed from another process using sendmsg, maybe it was created
- * using a direct syscall. To verify if we don't forget any source of new
- * socket. */
 typedef struct {
         SockEvent super;
         SockInfo sock_info;
@@ -394,6 +392,14 @@ typedef struct {
 
 typedef struct {
         SockEvent super;
+        int fd_in;
+        int fd_out;
+        size_t len;
+        unsigned int flags;
+} SockEvSplice;
+
+typedef struct {
+        SockEvent super;
         struct tcp_info info;
 } SockEvTcpInfo;
 
@@ -545,6 +551,9 @@ void sock_ev_epoll_pwait(int fd, int ret, int err, int timeout,
 
 void sock_ev_fdopen(int fd, FILE *ret, int err, const char *mode);
 
+void sock_ev_splice(int ret, int err, int fd_in, loff_t *off_in, int fd_out,
+                    loff_t *off_out, size_t len, unsigned int flags);
+
 void sock_ev_tcp_info(int fd, int ret, int err, struct tcp_info *info);
 
 void dump_all_sock_events(void);
@@ -552,5 +561,6 @@ void dump_all_sock_events(void);
 void sock_ev_free(void);  // Free state.
 // Free state and restore to default state (called after fork()).
 void sock_ev_reset(void);
+
 
 #endif

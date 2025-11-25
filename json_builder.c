@@ -685,6 +685,15 @@ static json_t *build_sock_ev_pselect(const SockEvPselect *ev) {
         return json_ev;
 }
 
+static json_t *build_sock_ev_splice(const SockEvSplice *ev) {
+        BUILD_EV_PRELUDE()
+        add(json_details, "fd_in", json_integer(ev->fd_in));
+        add(json_details, "fd_out", json_integer(ev->fd_out));
+        add(json_details, "len", json_integer(ev->len));
+        add(json_details, "flags", json_integer(ev->flags));
+        return json_ev;
+}
+
 static json_t *build_sock_ev_fcntl(const SockEvFcntl *ev) {
         BUILD_EV_PRELUDE()
         json_t *d = json_details;
@@ -967,6 +976,9 @@ static json_t *build_sock_ev(const SockEvent *ev) {
                         break;
                 case SOCK_EV_TCP_INFO:
                         r = build_sock_ev_tcp_info((const SockEvTcpInfo *)ev);
+                        break;
+                case SOCK_EV_SPLICE:
+                        r = build_sock_ev_splice((const SockEvSplice *)ev);
                         break;
         }
         return r;

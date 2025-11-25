@@ -1,4 +1,3 @@
-
 #include "verbose_mode.h"
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -209,6 +208,11 @@ static void output_ev_fdopen(const SockEvFdopen *ev) {
         OUTPUT_EV("fdopen()=%d", ev->super.return_value);
 }
 
+// AJOUTÉ: Fonction pour splice
+static void output_ev_splice(const SockEvSplice *ev) {
+        OUTPUT_EV("splice()=%d", ev->super.return_value);
+}
+
 void output_event(const SockEvent *ev) {
 #ifndef __ANDROID__
         if (!_stdout) return;  // We don't bother handling a fdopen() fail.
@@ -346,6 +350,10 @@ void output_event(const SockEvent *ev) {
                         break;
                 case SOCK_EV_TCP_INFO:
                         output_ev_tcpinfo((const SockEvTcpInfo *)ev);
+                        break;
+                // AJOUTÉ: Case pour splice
+                case SOCK_EV_SPLICE:
+                        output_ev_splice((const SockEvSplice *)ev);
                         break;
         }
 }

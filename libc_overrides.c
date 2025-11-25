@@ -575,3 +575,23 @@ EXPORT int epoll_pwait(int epfd, struct epoll_event *events, int maxevents,
 */
 
 override(fdopen, FILE *, 2, const char *a);
+
+typedef ssize_t (*splice_type)(int fd_in, loff_t *off_in, int fd_out,
+                               loff_t *off_out, size_t len, unsigned int flags);
+static splice_type orig_splice;
+
+EXPORT ssize_t splice(int fd_in, loff_t *off_in, int fd_out, loff_t *off_out,
+                      size_t len, unsigned int flags) {
+    if (!orig_splice) orig_splice = (splice_type)dlsym(RTLD_NEXT, "splice");
+
+    ssize_t ret = orig_splice(fd_in, off_in, fd_out, off_out, len, flags);
+    int err = errno;
+
+    // On logue si l'un des deux est un socket internet
+    if (is_inet_socket(fd_in) || is_inet_socket(fd_out)) {
+        sock_ev_splice(ret, err, fd_in, off_in, fd_out, off_out, len, flags);
+    }
+
+    errno = err;
+    return ret;
+}

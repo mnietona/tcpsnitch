@@ -1,4 +1,3 @@
-
 #include "sock_events.h"
 #include <assert.h>
 #include <dirent.h>
@@ -107,6 +106,7 @@ static SockEvent *alloc_event(SockEventType type, int return_value, int err,
                 CASE_EV(SOCK_EV_EPOLL_WAIT, SockEvEpollWait, -1);
                 CASE_EV(SOCK_EV_EPOLL_PWAIT, SockEvEpollPwait, -1);
                 CASE_EV(SOCK_EV_FDOPEN, SockEvFdopen, 0);
+                CASE_EV(SOCK_EV_SPLICE, SockEvSplice, -1);
                 CASE_EV(SOCK_EV_TCP_INFO, SockEvTcpInfo, -1);
         }
         ev->timestamp_usec = get_time_micros();
@@ -289,7 +289,6 @@ static void fill_sockopt(Sockopt *sockopt, int level, int optname,
 
 typedef int (*orig_bind_type)(int fd, const struct sockaddr *addr,
                               socklen_t len);
-                              
 static orig_bind_type orig_bind;
 
 #define MIN_PORT 32768  // cat /proc/sys/net/ipv4/ip_local_port_range
@@ -330,7 +329,7 @@ error_out:
 }
 
 static void dump_events_as_json(Socket *sock) {
-        if (OPT_D == NULL) goto error1;
+        if (conf_opt_d == NULL) goto error1;
         LOG_FUNC_INFO;
         char *json_str, *json_file_str;
 
@@ -532,6 +531,7 @@ const char *string_from_sock_event_type(SockEventType type) {
                 "epoll_wait",
                 "epoll_pwait",
                 "fdopen",
+                "splice",
                 "tcp_info"
         };
         assert(sizeof(strings) / sizeof(char *) == SOCK_EV_TCP_INFO + 1);
@@ -728,7 +728,7 @@ void sock_ev_recvfrom(int fd, int ret, int err, void *buf, size_t bytes,
 void sock_ev_sendmsg(int fd, int ret, int err, const struct msghdr *msg,
                      int flags) {
         // Inst. local vars Socket *sock & SockEvSendmsg *ev
-        SOCK_EV_PRELUDE(SOCK_EV_SENDMSG, SockEvSendmsg);
+        SOCK_EV_PRELUDE(SOCK_EV_SENDMSG, SockEvSendmsg); // CORRECTED TYPO
 
         ev->bytes = fill_msghdr(&ev->msghdr, msg);
         ev->flags = flags;
@@ -1107,6 +1107,42 @@ void sock_ev_tcp_info(int fd, int ret, int err, struct tcp_info *info) {
         free(info);
 
         SOCK_EV_POSTLUDE(SOCK_EV_TCP_INFO);
+}
+
+void sock_ev_splice(int ret, int err, int fd_in, loff_t *off_in, int fd_out,
+                    loff_t *off_out, size_t len, unsigned int flags) {
+    UNUSED(off_in);
+    UNUSED(off_out);
+    init_tcpsnitch();
+
+    int target_fd = -1;
+    if (is_inet_socket(fd_out)) target_fd = fd_out;
+    else if (is_inet_socket(fd_in)) target_fd = fd_in;
+
+    if (target_fd == -1) return; 
+
+    if (!ra_is_present(target_fd)) sock_ev_ghost_socket(target_fd);
+    Socket *sock = ra_get_and_lock_elem(target_fd);
+    
+    log_event(INFO, SOCK_EV_SPLICE, target_fd, sock->id);
+    SockEvSplice *ev = (SockEvSplice *)alloc_event(SOCK_EV_SPLICE, ret, err, sock->events_count);
+
+    ev->fd_in = fd_in;
+    ev->fd_out = fd_out;
+    ev->len = len;
+    ev->flags = flags;
+
+    if (ret > 0) {
+        if (target_fd == fd_out) sock->bytes_sent += ret;
+        if (target_fd == fd_in) sock->bytes_received += ret;
+    }
+
+    push_event(sock, (SockEvent *)ev);
+    output_event((SockEvent *)ev);
+    
+    bool dump_tcp_info = should_dump_tcp_info(sock);
+    ra_unlock_elem(target_fd);
+    if (dump_tcp_info) tcp_dump_tcp_info(target_fd);
 }
 
 void dump_all_sock_events(void) {
