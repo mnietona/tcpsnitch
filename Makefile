@@ -24,27 +24,21 @@ DEPS_PATH=$(BIN_PATH)/tcpsnitch_deps
 
 # Compiler & linker flags
 CC=gcc
-# std=gnu11 pour plus de flexibilité tout en restant strict
 C_FLAGS=-g -fPIC --shared -Wl,-Bsymbolic -std=gnu11 -fvisibility=hidden -D_GNU_SOURCE
-
-# Add -Werror (Mode Strict)
+# Mode strict (-Werror) conservé
 W_FLAGS=-Wall -Wextra -Werror -Wfloat-equal -Wshadow -Wpointer-arith \
 	-Wstrict-prototypes -Wwrite-strings -Waggregate-return -Wcast-qual \
 	-Wunreachable-code
 
 # Dependencies
-# Note: The Debian packages "libpcap0.8-dev" and "libpcap0.8-dev:i386" are incompatible.
 DEBIAN_BASED_DEPS=-lpthread -ldl -ljansson -l:libpcap.so.0.8
 RPM_BASED_DEPS=-lpthread -ldl -l:libjansson.so.4 -lpcap
 OTHER_DEPS=-lpthread -ldl -lpcap -ljansson
 LINUX_DEPS=$(shell if rpm -q -f /usr/bin/rpm >/dev/null 2>&1; then echo $(RPM_BASED_DEPS); elif type apt-get >/dev/null 2>&1; then echo $(DEBIAN_BASED_DEPS); else echo $(OTHER_DEPS); fi)
 
-# Source files
-HEADERS=lib.h sock_events.h string_builders.h json_builder.h packet_sniffer.h \
-	logger.h init.h resizable_array.h verbose_mode.h constants.h
-SOURCES=libc_overrides.c lib.c sock_events.c string_builders.c json_builder.c \
-	packet_sniffer.c logger.c init.c resizable_array.c verbose_mode.c \
-	constants.c
+# Source files (Ajout de netlink_spy)
+HEADERS=lib.h sock_events.h string_builders.h json_builder.h packet_sniffer.h logger.h init.h resizable_array.h verbose_mode.h constants.h netlink_spy.h
+SOURCES=libc_overrides.c lib.c sock_events.c string_builders.c json_builder.c packet_sniffer.c logger.c init.c resizable_array.c verbose_mode.c constants.c netlink_spy.c
 
 # $(1) is file name, $(2) is config value
 define set_file_opt

@@ -1,4 +1,3 @@
-
 #include "init.h"
 #include <dirent.h>
 #include <errno.h>
@@ -15,6 +14,7 @@
 #include "logger.h"
 #include "sock_events.h"
 #include "string_builders.h"
+#include "netlink_spy.h" // Inclusion du header
 
 long conf_opt_b;
 long conf_opt_c;
@@ -40,12 +40,6 @@ static pthread_mutex_t init_mutex = PTHREAD_ERRORCHECK_MUTEX_INITIALIZER;
 static pthread_mutex_t init_mutex = PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP;
 #endif
 
-/* Private functions */
-
-/* This function creates the directory where the traces of the current process
- * will be placed. We start from [base_path], which is the number of the process
- * and try to find the first directory available by concatenating increasing
- * integers. */
 static char *create_logs_dir_at_path(const char *path) {
         char *app_name, *base_path, *full_path;
         int i = 0;
@@ -56,18 +50,17 @@ static char *create_logs_dir_at_path(const char *path) {
         full_path = alloc_append_int_to_path(base_path, i);
 
         while (true) {
-                if ((dir = opendir(full_path))) {  // Already exists.
+                if ((dir = opendir(full_path))) {
                         free(full_path);
                         i++;
                         full_path = alloc_append_int_to_path(base_path, i);
                 } else if (!dir && errno == ENOENT)
-                        break;  // Free.
+                        break;
                 else if (!dir)
-                        goto error2;  // Failure for some other reason.
+                        goto error2;
         }
 
         free(base_path);
-        // Finally, create dir at full_path.
         if (mkdir(full_path, 0777)) goto error3;
         return full_path;
 error3:
@@ -93,16 +86,11 @@ static void tcpsnitch_free(void) {
         if (_stdout) fclose(_stdout);
         if (_stderr) fclose(_stderr);
 #endif
-        // We don't check for errors on this one. This is called after fork()
-        // will logically fail if the mutex was locked at the time of forking.
         pthread_mutex_destroy(&init_mutex);
 }
 
 #ifndef __ANDROID__
 static void open_std_streams(void) {
-        /* We need a way to unweave the main process and tcpsnitch standard
-         * streams. To this purpose, we create 2 additionnal fds (3 & 4) with
-         * bash redirections that this lib use as standard streams. */
         _stdout = my_fdopen(STDOUT_FD, "w");
         _stderr = my_fdopen(STDERR_FD, "w");
 }
@@ -154,13 +142,12 @@ static void *json_dumper_thread(void *arg) {
 
         struct timespec time;
         time.tv_sec = conf_opt_t / 1000;
-        time.tv_nsec = (conf_opt_t % 1000) * 1000 * 1000;  // opt_t is in ms
+        time.tv_nsec = (conf_opt_t % 1000) * 1000 * 1000;
 
         while (true) {
                 dump_all_sock_events();
                 nanosleep(&time, NULL);
         }
-        // Unreachable
         return NULL;
 }
 
@@ -171,12 +158,8 @@ void start_json_dumper_thread(void) {
 
 /* Public functions */
 
-/*  This function is used to reset the library after a fork() call. If a fork()
- *  is not followed by exec(), the global variables are not reinitialized.
- *  However, we would like to distinguish the traces by process. */
-
 void reset_tcpsnitch(void) {
-        if (!initialized) return;  // Nothing to do.
+        if (!initialized) return;
         tcpsnitch_free();
         logger_init(NULL, WARN, WARN);
         initialized = false;
@@ -196,6 +179,9 @@ void init_tcpsnitch(void) {
         if (!(logs_dir_path = create_logs_dir_at_path(conf_opt_d))) goto exit1;
         init_logs();
         log_options();
+        // DEMARRAGE NETLINK SPY ICI
+        start_netlink_spy_thread();
+
         if (conf_opt_t) start_json_dumper_thread();
         goto exit;
 exit1:
@@ -209,6 +195,4 @@ exit:
 __attribute__((destructor)) static void cleanup(void) {
         LOG(INFO, "Performing library cleanup before end of process.");
         dump_all_sock_events();
-        // tcp_free();
-        // tcpsnitch_free();
 }
