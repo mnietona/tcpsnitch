@@ -1,9 +1,42 @@
+# --- Configuration Originale (Gregory) ---
 *.so*
 *.sw*
 *.pyc
-*.py
+# *.py 
 tags
 .config.in
 linux_git_hash
 android_git_hash
 enable_i386
+
+# --- Python & Environnement Virtuel (Venv) ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+*.egg-info/
+
+# --- macOS (Fichiers système polluants) ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+
+# --- Compilation C (Objets et librairies statiques) ---
+*.o
+*.a
+
+# --- Données & Traces (Ne jamais versionner les résultats de tests !) ---
+dataset_rich/
+mes_traces/
+test_netlink/
+*.json
+*.pcap
+logs.txt
+meta/
