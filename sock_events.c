@@ -1115,6 +1115,7 @@ void sock_ev_tcp_info(int fd, int ret, int err, struct tcp_info *info) {
         SOCK_EV_POSTLUDE(SOCK_EV_TCP_INFO);
 }
 
+// TODO : AJOUTER DES TEST POUR ETRE SUR DE BIEN CAPTURER LES DONNEES
 void sock_ev_splice(int ret, int err, int fd_in, loff_t *off_in, int fd_out,
                     loff_t *off_out, size_t len, unsigned int flags) {
     UNUSED(off_in);
@@ -1177,7 +1178,7 @@ void sock_ev_reset(void) {
         }
 }
 
-// 4. Ajoutez ces fonctions TOUT À LA FIN du fichier
+
 void sock_ev_netlink_init(int fd) {
     init_tcpsnitch();
     

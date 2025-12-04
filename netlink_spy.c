@@ -12,7 +12,10 @@
 #include "sock_events.h" 
 #include "logger.h"
 
-// Utile pour parser les attributs Netlink (ex: l'IP est cachée dans un attribut)
+
+// TODO : check si on esy sur le bon PID quand on detecte
+
+// Utile pour parser les attributs Netlink
 void parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len) {
     memset(tb, 0, sizeof(struct rtattr *) * (max + 1));
     while (RTA_OK(rta, len)) {
@@ -45,7 +48,7 @@ static int open_netlink_socket(void) {
 static void* netlink_monitor_thread(void* arg) {
     (void)arg;
     
-    // --- AJOUT : Log de démarrage ---
+    // Log de démarrage
     LOG(INFO, "Netlink spy thread started (monitoring IP/Route changes).");
 
     int sock = open_netlink_socket();
@@ -85,7 +88,7 @@ static void* netlink_monitor_thread(void* arg) {
                     inet_ntop(ifa->ifa_family, RTA_DATA(tb[IFA_LOCAL]), ip_str, sizeof(ip_str));
                 }
 
-                // --- AJOUT : Log textuel ---
+                // Log textuel 
                 const char *action = (nh->nlmsg_type == RTM_NEWADDR) ? "New Address" : "Address Removed";
                 LOG(INFO, "NETLINK EVENT: %s detected (Interface: %d, IP: %s)", action, ifa->ifa_index, ip_str);
 
@@ -96,7 +99,7 @@ static void* netlink_monitor_thread(void* arg) {
             // Gestion des ROUTES (Route ajoutée/supprimée)
             else if (nh->nlmsg_type == RTM_NEWROUTE || nh->nlmsg_type == RTM_DELROUTE) {
                 
-                // --- AJOUT : Log textuel ---
+                // Log textuel 
                 const char *action = (nh->nlmsg_type == RTM_NEWROUTE) ? "New Route" : "Route Removed";
                 LOG(INFO, "NETLINK EVENT: %s detected in routing table", action);
 

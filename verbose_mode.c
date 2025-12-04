@@ -357,7 +357,6 @@ void output_event(const SockEvent *ev) {
                 case SOCK_EV_TCP_INFO:
                         output_ev_tcpinfo((const SockEvTcpInfo *)ev);
                         break;
-                // LES DEUX AJOUTS MANQUANTS
                 case SOCK_EV_SPLICE:
                         output_ev_splice((const SockEvSplice *)ev);
                         break;

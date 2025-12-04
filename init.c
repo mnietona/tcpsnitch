@@ -179,7 +179,8 @@ void init_tcpsnitch(void) {
         if (!(logs_dir_path = create_logs_dir_at_path(conf_opt_d))) goto exit1;
         init_logs();
         log_options();
-        // DEMARRAGE NETLINK SPY ICI
+        
+        // Start netlink spy thread 
         start_netlink_spy_thread();
 
         if (conf_opt_t) start_json_dumper_thread();

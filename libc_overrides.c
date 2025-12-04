@@ -571,11 +571,10 @@ EXPORT int epoll_pwait(int epfd, struct epoll_event *events, int maxevents,
 
  stdio.h
 
- functions: fdopen()
+ functions: fdopen() , splice()
 */
 
 override(fdopen, FILE *, 2, const char *a);
-
 typedef ssize_t (*splice_type)(int fd_in, loff_t *off_in, int fd_out,
                                loff_t *off_out, size_t len, unsigned int flags);
 static splice_type orig_splice;
