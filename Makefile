@@ -5,7 +5,7 @@ VERSION=$(MAJOR_VERSION).$(MINOR_VERSION)
 
 CONFIG=.config.in
 
-# Directories (Nouveau !)
+# Directories
 SRC_DIR=src
 INC_DIR=include
 BIN_DIR=bin
@@ -87,7 +87,10 @@ uninstall:
 	@rm $(BIN_PATH)/$(EXECUTABLE)
 
 clean:
+	@echo "[-] Cleaning build artifacts..."
 	@rm -f ./$(BIN_DIR)/*.so* ./$(BIN_DIR)/*hash ./$(BIN_DIR)/enable_i386 $(CONFIG)
+	@find . -type f -name '.DS_Store' -delete
+	@find . -type f -name '._*' -delete
 
 tests: linux install
 	cd tests && rake
