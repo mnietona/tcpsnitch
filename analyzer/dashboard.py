@@ -9,18 +9,6 @@ import plotly.express as px
 # Configuration de la page
 st.set_page_config(page_title="TCPSnitch Analytics", layout="wide")
 
-# CSS personnalisé
-st.markdown(
-    """
-<style>
-    .reportview-container { background: #f0f2f6 }
-    h1 { color: #1f2937; font-family: 'Helvetica Neue', sans-serif; }
-    h2 { color: #374151; font-family: 'Helvetica Neue', sans-serif; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-</style>
-""",
-    unsafe_allow_html=True,
-)
 
 # Sidebar for file upload
 st.sidebar.title("Configuration")
