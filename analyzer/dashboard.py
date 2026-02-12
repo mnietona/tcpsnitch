@@ -293,6 +293,87 @@ def render_overview(df, metadata):
         st.plotly_chart(fig_bar, width="stretch")
 
 
+def render_socket_analysis(df):
+    """
+    Displays the Socket Analysis: Distribution by Socket, Volume, and Chronology.
+    """
+    st.subheader("Socket Analysis")
+
+    if "socket_id" not in df.columns or df.empty:
+        st.warning("No socket data available for this trace.")
+        return
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.markdown("**Distribution by Socket**")
+        # Group by Socket ID and Call Type
+        socket_stats = (
+            df.groupby(["socket_id", "type"]).size().reset_index(name="count")
+        )
+
+        # Small sort to make the display logical (socket 3, 4, 5...)
+        try:
+            socket_stats["sort_key"] = socket_stats["socket_id"].astype(int)
+            socket_stats = socket_stats.sort_values("sort_key")
+        except:
+            pass  # If IDs are not convertible, keep the default order
+
+        # Stacked Bar Chart
+        fig_sockets = px.bar(
+            socket_stats,
+            x="socket_id",
+            y="count",
+            color="type",
+            title="Activity by File Descriptor",
+            labels={
+                "socket_id": "Socket ID (FD)",
+                "count": "Number of Calls",
+                "type": "Function Type",
+            },
+            color_discrete_sequence=px.colors.qualitative.Prism,
+        )
+        fig_sockets.update_layout(
+            xaxis_type="category"
+        )  # Force the X-axis to treat IDs as categories
+        st.plotly_chart(fig_sockets, use_container_width=True)
+
+    with col2:
+        st.markdown("**Volume Transferred (Top Sockets)**")
+        if "bytes" in df.columns:
+            # Calculate total volume per socket
+            vol_df = df.groupby("socket_id")["bytes"].sum().reset_index()
+            vol_df["MB"] = vol_df["bytes"] / (1024 * 1024)
+
+            # Sort in descending order and display
+            vol_df = vol_df.sort_values("MB", ascending=False)
+
+            st.dataframe(
+                vol_df[["socket_id", "MB"]].style.format({"MB": "{:.2f} MB"}),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("No volume information (bytes) available.")
+
+    # Optional chronology by socket
+    st.markdown("---")
+    st.markdown("**Chronological Detail by Socket**")
+    selected_socket = st.selectbox(
+        "Select a socket to inspect:", df["socket_id"].unique()
+    )
+
+    if selected_socket:
+        sock_df = df[df["socket_id"] == selected_socket].sort_values("timestamp")
+        st.dataframe(
+            sock_df[
+                ["rel_time", "type", "return_value", "errno", "bytes", "io_category"]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
 # -----------------------------------------------------------------------------
 # 4. MAIN APPLICATION LOGIC
 # -----------------------------------------------------------------------------
@@ -325,13 +406,13 @@ if uploaded_file is not None:
     )
 
     # 4. Tabs
-    tab1, tab2 = st.tabs(["Global Overview", "Coming Soon"])
+    tab1, tab2 = st.tabs(["Global Overview", "Socket Analysis"])
 
     with tab1:
         render_overview(df, metadata)
 
     with tab2:
-        st.info("...?")
+        render_socket_analysis(df)
 
 else:
     # Welcome Screen
