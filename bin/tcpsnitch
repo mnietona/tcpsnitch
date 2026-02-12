@@ -11,10 +11,6 @@ set -o nounset
 readonly NAME="tcpsnitch"
 readonly VERSION=0.1
 readonly VERSION_STR="${NAME} version ${VERSION}"
-#readonly SERVER="192.168.99.100:3000"
-readonly SERVER="https://tcpsnitch.org"
-#readonly SERVER="staging.tcpsnitch.org"
-readonly SERVER_ENDPOINT="${SERVER}/app_traces"
 readonly I386_LIB="lib${NAME}.so.${VERSION}-i386"
 readonly AMD64_LIB="lib${NAME}.so.${VERSION}-x86-64"
 readonly ARM_LIB="lib${NAME}.so.${VERSION}-arm"
@@ -31,7 +27,6 @@ OPT_C=0
 OPT_D=""
 OPT_F=2
 OPT_L=1
-OPT_N=0
 OPT_P=0
 OPT_T=1000
 OPT_U=0
@@ -60,24 +55,22 @@ usage() {
     echo "-a          instrument & launch app on connected android device."
     echo "-b <bytes>  dump tcp_info every <bytes> (0 means NO dump, def 0)."
     echo "-c          activate capture of pcap traces (only on Linux)."
-    echo "-d <dir>    dir to save traces (defaults to random dir in /tmp)."
+    echo "-d <dir>    Base output directory (defaults to ./tcpsnitch_output)."
     echo "-f <lvl>    verbosity of logs to file (0 to 5, defaults to 2)."
     echo "-h          show this help text."
     echo "-k <pkg>    kill instrumented android <pkg> and pull traces."
     echo "-l <lvl>    verbosity of logs to stderr (0 to 5, defaults to 2)."
-    echo "-n          do (n)ot send traces to web server."
     echo "-p          pedantic, ask a lot of annoying questions."
     echo "-t <msec>   dump to JSON file every <msec> (def. 1000)."
-    echo "-u <usec>   dump tcp_info every <usec> (0 means NO dump, def 0)."
-    echo "-v          activate verbose output (not really implemented)."
+    echo "-u <usec>   dump tcp_info every <usec> (0 means default, Linux: 100ms)."
+    echo "-v          activate verbose output (shows app stdout/stderr)."
     echo "--version   print ${NAME} version."
 }
 
 parse_options() {
-    # Parse options
-    while getopts ":achnpvb:d:f:k:l:t:u:-:" opt; do
+    while getopts ":achpvb:d:f:k:l:t:u:-:" opt; do
         case "${opt}" in
-            -) # Trick to parse long options with getopts.
+            -) 
                 case "${OPTARG}" in
                     version)
                         info "${VERSION_STR}"
@@ -85,58 +78,24 @@ parse_options() {
                         ;;
                 esac
                 ;;
-            a)
-                OPT_A=1
-                ;;
-            b)
-                assert_int "${OPTARG}" "invalid -b argument: '${OPTARG}'" 
-                OPT_B=${OPTARG}
-                ;;
-            c)
-                OPT_C=1;
-                ;;
-            d)
+            a) OPT_A=1 ;;
+            b) assert_int "${OPTARG}" "invalid -b argument" ; OPT_B=${OPTARG} ;;
+            c) OPT_C=1 ;;
+            d) 
                 if [[ ! -d "${OPTARG}" ]] ; then
-                    error "invalid -d argument: '${OPTARG}'"
+                    mkdir -p "${OPTARG}"
                 fi
                 OPT_D=$(readlink -f "$OPTARG")
                 ;;
-            f)
-                assert_int "${OPTARG}" "invalid -f argument: '${OPTARG}'" 
-                OPT_F=${OPTARG}
-                ;;
-            h)
-                usage
-                exit 0
-                ;;
-            k)
-                tcpsnitch_android_teardown $@
-                exit 0
-                ;;
-            l)
-                assert_int "${OPTARG}" "invalid -l argument: '${OPTARG}'" 
-                OPT_L=${OPTARG}
-                ;;
-            n)
-                OPT_N=1
-                ;;
-            p)
-                OPT_P=1
-                ;;
-            u)
-                assert_int "${OPTARG}" "invalid -u argument: '${OPTARG}'" 
-                OPT_U=${OPTARG}
-                ;;
-            t)
-                assert_int "${OPTARG}" "invalid -t argument: '${OPTARG}'"
-                OPT_T=${OPTARG}
-                ;;
-            v)
-                OPT_V=$((OPT_V+1))
-                ;;
-            \?)
-                error "invalid option"
-                ;;
+            f) assert_int "${OPTARG}" "invalid -f argument" ; OPT_F=${OPTARG} ;;
+            h) usage ; exit 0 ;;
+            k) tcpsnitch_android_teardown $@ ; exit 0 ;;
+            l) assert_int "${OPTARG}" "invalid -l argument" ; OPT_L=${OPTARG} ;;
+            p) OPT_P=1 ;;
+            u) assert_int "${OPTARG}" "invalid -u argument" ; OPT_U=${OPTARG} ;;
+            t) assert_int "${OPTARG}" "invalid -t argument" ; OPT_T=${OPTARG} ;;
+            v) OPT_V=$((OPT_V+1)) ;;
+            \?) error "invalid option" ;;
         esac
     done
 }
@@ -150,12 +109,11 @@ parse_options() {
 error() {
     declare msg="$1"
     echo "${NAME}: ${msg}."
-    echo "Try '${NAME} -h' for more information."
     kill -s TERM $TOP_PID
 }
 
 info() {
-    echo "${1}."
+    echo "[tcpsnitch] ${1}"
 }
 
 is_integer() {
@@ -177,7 +135,7 @@ cd_script_dir() {
 assert_lib_present() {
     declare lib="$1"
     if [[ ! -f "$lib" ]]; then
-        error "${lib} missing! Reinstall ${NAME} (see README)"
+        error "${lib} missing! Reinstall ${NAME}"
     fi
 }
 
@@ -191,50 +149,6 @@ create_opt_d_dir() {
     if [[ -z "$OPT_D" ]]; then
         OPT_D=$(mktemp -d)
         chmod 777 "$OPT_D"
-    fi
-}
-
-zip_trace() {
-    cd "${OPT_D}" || error "Could not cd to ${OPT_D}"
-    tar -czf archive.tar.gz ./*
-}
-
-upload_trace() {
-    if [[ $OPT_N -eq "1" ]]; then exit; fi
-
-    # Test if trace is empty
-    if ! ls ${OPT_D}/*/*.json >/dev/null 2>/dev/null; then
-        error "Nothing to trace. Please report a bug if you have reasons to believe the trace should not be empty (https://github.com/GregoryVds/tcpsnitch/issues)"
-    fi
-
-    zip_trace
-
-    declare form="app_trace[archive]=@${OPT_D}/archive.tar.gz"
-
-    if [[ $OPT_P -eq "1" ]]; then
-        read -p "Workload decription (e.g. 'Opened app & navigated to google.com'): " workload
-
-        PS3='Select connectivity type: '
-        options=("wifi" "ethernet" "lte")
-        select connectivity in "${options[@]}"; do
-            case "$connectivity" in
-                "wifi"|"ethernet"|"lte")
-                    break
-                    ;;
-                *)
-                    echo "Invalid option"
-            esac
-        done
-
-        info "Uploading trace..."
-        if ! curl --connect-timeout 2 -F "$form" -F "app_trace[workload]=$workload" -F "app_trace[connectivity]=$connectivity" "$SERVER_ENDPOINT"; then
-            info "Failed to connect to ${SERVER}"
-        fi
-    else
-        info "Uploading trace..."
-        if ! curl --connect-timeout 2 -F "$form" "$SERVER_ENDPOINT"; then
-            info "Failed to connect to ${SERVER}"
-        fi
     fi
 }
 
@@ -286,9 +200,14 @@ pull_trace_for_android_package() {
 
     info "Pulling trace from Android device..."
     adb shell su -c chown -R shell "$tracesdir"
-    adb pull "$tracesdir" "$OPT_D" 2>/dev/null
+    
+    # [MODIFICATION] On pull dans le dossier spécifié ou courant (tcpsnitch_output)
+    local target_dir="${OPT_D:-${CWD}/tcpsnitch_output/android_${PACKAGE}}"
+    mkdir -p "$target_dir"
+    
+    adb pull "$tracesdir" "$target_dir" 2>/dev/null
     adb shell su -c rm -rf "$tracesdir"
-    info "Trace saved in $OPT_D"
+    info "Trace saved in $target_dir"
 }
 
 ###############################################################################
@@ -299,7 +218,6 @@ pull_trace_for_android_package() {
 
 tcpsnitch_linux() {
     if [ -f "$cmd" ]; then
-        # Resolve absolute path for $1 & update positional parameter accordingly
         cmd=$(readlink -f "$cmd")
         set -- "$cmd" "${@:2}"
 
@@ -312,23 +230,30 @@ tcpsnitch_linux() {
         fi
     fi
 
-    # Test if libs are present
     cd_script_dir
     readonly ENABLE_I386=$(cat enable_i386 2>/dev/null || false)
     $ENABLE_I386 && assert_lib_present "$I386_LIB"
     assert_lib_present "$AMD64_LIB"
     readonly LINUX_GIT_HASH=$(cat linux_git_hash)
 
-    create_opt_d_dir
-
-    # Extract app (split on '/' and take last)
-    # Global replace (//) in $1 of / (escaped) by ' ' & interpret as array
+    # Default output directory if not specified
+    local BASE_DIR="${OPT_D:-${CWD}/tcpsnitch_output}"
+    
+    # Directory name
     declare array=(${1//\// });
     declare app=${array[-1]}
 
+    # Add timestamp 
+    local TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    local UNIQUE_NAME="${app}_${TIMESTAMP}"
+    
+    local RUN_DIR="${BASE_DIR}/${UNIQUE_NAME}"
+    mkdir -p "$RUN_DIR"
+    
+    declare meta_dir="$RUN_DIR/meta"
+    mkdir -p "$meta_dir"
+
     # Write meta data
-    declare meta_dir="$OPT_D/meta"
-    mkdir "$meta_dir"
     echo "$app" > "${meta_dir}/app"
     echo "$@" > "${meta_dir}/cmd"
     uname -r > "${meta_dir}/kernel"
@@ -350,29 +275,32 @@ tcpsnitch_linux() {
     _preload_opt+=$(readlink -f "$AMD64_LIB")
 
     cd "$CWD"
-    # libtcpsnitch uses fd 3 & 4 as stdout & stderr repectively. This allows to
-    # distinguish the standard outputs of tcpsnitch and of the traced process.
-    # The distinction is however not used at the moment s standard streams of
-    # libtcpsnitch & the traced process are currently sent to the same place.
     exec 3>&1
     exec 4>&2
+    
+    if [[ $OPT_V -gt 0 ]]; then
+        TCPSNITCH_OPT_B=$OPT_B \
+        TCPSNITCH_OPT_C=$OPT_C \
+        TCPSNITCH_OPT_D=$RUN_DIR \
+        TCPSNITCH_OPT_F=$OPT_F \
+        TCPSNITCH_OPT_L=$OPT_L \
+        TCPSNITCH_OPT_T=$OPT_T \
+        TCPSNITCH_OPT_U=$OPT_U \
+        TCPSNITCH_OPT_V=$OPT_V \
+        LD_PRELOAD="${_preload_opt}" "$@" 1>&3
+    else
+        TCPSNITCH_OPT_B=$OPT_B \
+        TCPSNITCH_OPT_C=$OPT_C \
+        TCPSNITCH_OPT_D=$RUN_DIR \
+        TCPSNITCH_OPT_F=$OPT_F \
+        TCPSNITCH_OPT_L=$OPT_L \
+        TCPSNITCH_OPT_T=$OPT_T \
+        TCPSNITCH_OPT_U=$OPT_U \
+        TCPSNITCH_OPT_V=$OPT_V \
+        LD_PRELOAD="${_preload_opt}" "$@" > /dev/null 2>&1
+    fi
 
-    {\
-    TCPSNITCH_OPT_B=$OPT_B \
-    TCPSNITCH_OPT_C=$OPT_C \
-    TCPSNITCH_OPT_D=$OPT_D \
-    TCPSNITCH_OPT_F=$OPT_F \
-    TCPSNITCH_OPT_L=$OPT_L \
-    TCPSNITCH_OPT_T=$OPT_T \
-    TCPSNITCH_OPT_U=$OPT_U \
-    TCPSNITCH_OPT_V=$OPT_V \
-    LD_PRELOAD="${_preload_opt}" "$@" 1>&3; \
-    # Filter out some errors
-    } 2>&1 | grep -E -v "$HIDDEN_ERRORS" 1>&2
-
-    info "Trace saved in ${OPT_D}"
-
-    upload_trace
+    info "Trace saved in: ${RUN_DIR}"
 }
 
 ###############################################################################
@@ -387,12 +315,17 @@ tcpsnitch_android() {
     readonly ANDROID_GIT_HASH=$(cat android_git_hash)
     get_android_package "$cmd"
     kill_android_package
-    create_opt_d_dir
+    
+    if [[ -z "$OPT_D" ]]; then
+        OPT_D="${CWD}/tcpsnitch_output"
+    fi
 
     # Desactivate Selinux
     adb shell su -c setenforce 0
 
-    # Create logs dir
+    # Create logs dir (Android side)
+    # NOTE: Sur Android on garde le path original /data/data/... 
+    # Le code C modifié écrira directement dedans sans ajouter _000, ce qui est très bien.
     declare LOGS_DIR="/data/data/${PACKAGE}/${NAME}"
     adb shell su -c rm -rf "$LOGS_DIR"
     adb shell su -c mkdir -m 777 -p "$LOGS_DIR"
@@ -422,8 +355,7 @@ tcpsnitch_android() {
     info "Uploading ${NAME} library to ${LIBPATH}/${ARM_LIB}"
     adb push ${ARM_LIB} ${LIBPATH} 2>/dev/null
 
-    # Properties are limited to 32 chars includind the NULL byte.
-    # With "wrap." being 5 chars, we have 26 chars left the app name.
+    # Properties
     adb shell setprop wrap."${PACKAGE:0:26}" LD_PRELOAD="${LIBPATH}/${ARM_LIB}"
     adb shell setprop "${PROP_PREFIX}.opt_b" "$OPT_B"
     adb shell setprop "${PROP_PREFIX}.opt_d" "$LOGS_DIR"
@@ -433,25 +365,19 @@ tcpsnitch_android() {
     adb shell setprop "${PROP_PREFIX}.opt_u" "$OPT_U"
     adb shell setprop "${PROP_PREFIX}.opt_v" "$OPT_V"
 
-    # Those properties are used by this bash script only. We set them to
-    # retrieve them on -k.
+    # Save properties for teardown (-k)
     adb shell setprop "${PROP_PREFIX}.opt_d_k" "$OPT_D"
-    adb shell setprop "${PROP_PREFIX}.opt_n_k" "$OPT_N"
-    adb shell setprop "${PROP_PREFIX}.opt_p_k" "$OPT_P"
-
+    
     start_android_package
     info "Execute './${NAME} -k ${cmd}' to terminate the capture"
 }
 
 tcpsnitch_android_teardown() {
     OPT_D=$(adb shell getprop "${PROP_PREFIX}.opt_d_k" | tr -d '\r')
-    OPT_N=$(adb shell getprop "${PROP_PREFIX}.opt_n_k" | tr -d '\r')
-    OPT_P=$(adb shell getprop "${PROP_PREFIX}.opt_p_k" | tr -d '\r')
-
+    
     get_android_package "${2}"
     kill_android_package
     pull_trace_for_android_package
-    upload_trace
 }
 
 ###############################################################################
