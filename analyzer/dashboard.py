@@ -331,9 +331,7 @@ if uploaded_file is not None:
         render_overview(df, metadata)
 
     with tab2:
-        st.info(
-            "Advanced analysis (I/O Buffers, Latency Heatmaps) coming in the next update."
-        )
+        st.info("...?")
 
 else:
     # Welcome Screen
