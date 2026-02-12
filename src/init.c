@@ -14,7 +14,7 @@
 #include "logger.h"
 #include "sock_events.h"
 #include "string_builders.h"
-#include "netlink_spy.h" // Inclusion du header
+#include "netlink_spy.h"
 
 long conf_opt_b;
 long conf_opt_c;
@@ -40,43 +40,19 @@ static pthread_mutex_t init_mutex = PTHREAD_ERRORCHECK_MUTEX_INITIALIZER;
 static pthread_mutex_t init_mutex = PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP;
 #endif
 
-static char *create_logs_dir_at_path(const char *path) {
-        char *app_name, *base_path, *full_path;
-        int i = 0;
-        DIR *dir;
-        if (!(app_name = alloc_app_name())) goto error_out;
-        if (!(base_path = alloc_concat_path(path, app_name))) goto error1;
-        free(app_name);
-        full_path = alloc_append_int_to_path(base_path, i);
-
-        while (true) {
-                if ((dir = opendir(full_path))) {
-                        free(full_path);
-                        i++;
-                        full_path = alloc_append_int_to_path(base_path, i);
-                } else if (!dir && errno == ENOENT)
-                        break;
-                else if (!dir)
-                        goto error2;
+static char *prepare_output_dir(const char *path) {
+    struct stat st = {0};
+    if (stat(path, &st) == -1) {
+        if (mkdir(path, 0777) != 0 && errno != EEXIST) {
+            LOG(ERROR, "mkdir() failed for %s. %s.", path, strerror(errno));
+            return NULL;
         }
-
-        free(base_path);
-        if (mkdir(full_path, 0777)) goto error3;
-        return full_path;
-error3:
-        LOG(ERROR, "mkdir() failed for %s. %s.", path, strerror(errno));
-        free(full_path);
-        goto error_out;
-error2:
-        LOG(ERROR, "opendir() failed. %s.", strerror(errno));
-        free(full_path);
-        free(base_path);
-        goto error_out;
-error1:
-        free(app_name);
-error_out:
-        LOG_FUNC_ERROR;
+    } else if (!S_ISDIR(st.st_mode)) {
+        LOG(ERROR, "Path %s exists but is not a directory.", path);
         return NULL;
+    }
+    
+    return strdup(path);
 }
 
 static void tcpsnitch_free(void) {
@@ -100,14 +76,16 @@ static void get_options(void) {
         conf_opt_b = get_long_opt_or_defaultval(OPT_B, 4096);
 #ifdef __ANDROID__
         conf_opt_d = alloc_android_opt_d();
+        conf_opt_u = get_long_opt_or_defaultval(OPT_U, 0);
 #else
         conf_opt_c = get_long_opt_or_defaultval(OPT_C, 0);
         conf_opt_d = alloc_str_opt(OPT_D);
+        
+        conf_opt_u = get_long_opt_or_defaultval(OPT_U, 100000); 
 #endif
         conf_opt_f = get_long_opt_or_defaultval(OPT_F, WARN);
         conf_opt_l = get_long_opt_or_defaultval(OPT_L, WARN);
         conf_opt_t = get_long_opt_or_defaultval(OPT_T, 1000);
-        conf_opt_u = get_long_opt_or_defaultval(OPT_U, 0);
         conf_opt_v = get_long_opt_or_defaultval(OPT_V, 0);
 }
 
@@ -175,18 +153,35 @@ void init_tcpsnitch(void) {
         open_std_streams();
 #endif
         get_options();
-        if (!conf_opt_d) goto exit1;
-        if (!(logs_dir_path = create_logs_dir_at_path(conf_opt_d))) goto exit1;
-        init_logs();
+        
+        // SECURITY 
+        if (!conf_opt_d) {
+             #ifdef __ANDROID__
+                 // c'est grave mais s'occup apres
+             #else
+                 conf_opt_d = strdup(".");
+             #endif
+        }
+
+        if (conf_opt_d) {
+             logs_dir_path = prepare_output_dir(conf_opt_d);
+             if (!logs_dir_path) {
+                  LOG(ERROR, "Failed to prepare output directory.");
+                  goto exit1;
+             }
+             init_logs();
+        } else {
+             goto exit1; 
+        }
+
         log_options();
         
-        // Start netlink spy thread 
         start_netlink_spy_thread();
 
         if (conf_opt_t) start_json_dumper_thread();
         goto exit;
 exit1:
-        LOG(ERROR, "Nothing will be written to file (log, pcap, json).");
+        LOG(ERROR, "TCPSnitch failed to initialize storage. Aborting capture.");
 exit:
         initialized = true;
         mutex_unlock(&init_mutex);
