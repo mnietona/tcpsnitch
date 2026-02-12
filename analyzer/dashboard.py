@@ -412,8 +412,7 @@ if uploaded_file is not None:
         render_overview(df, metadata)
 
     with tab2:
-        render_socket_analysis(df)
-
+        st.info("Socket Analysis coming soon!")
 else:
     # Welcome Screen
     st.title("Welcome to TCPSnitch Analytics Dashboard")
