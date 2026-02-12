@@ -10,7 +10,7 @@ import plotly.express as px
 st.set_page_config(page_title="TCPSnitch Analytics", layout="wide")
 
 # -----------------------------------------------------------------------------
-# 1. DATA LOADING & PARSING FUNCTIONS
+# 1. PARSING & NORMALIZATION
 # -----------------------------------------------------------------------------
 
 
@@ -20,10 +20,9 @@ def process_single_trace(filename, content_str):
     """
     records = []
     parts = filename.strip("/").split("/")
-    if len(parts) < 2:
-        return []
 
-    scenario_name = parts[-2]
+    # Extract context from filename (Scenario / Socket ID)
+    scenario_name = parts[-2] if len(parts) > 1 else "Unknown"
     socket_id = os.path.splitext(parts[-1])[0]
 
     try:
@@ -39,22 +38,49 @@ def process_single_trace(filename, content_str):
                     "scenario": scenario_name,
                     "socket_id": socket_id,
                     "timestamp": event.get("timestamp_usec", 0),
-                    "type": event.get("type"),
+                    "type": event.get("type", "unknown"),
                     "return_value": event.get("return_value"),
-                    "errno": event.get("errno"),  # Can be None, int, or string code
+                    "errno": event.get("errno"),
                     "elapsed": event.get("elapsed_usec", 0),
                 }
 
+                # Error Handling Logic
+                err = row["errno"]
+                row["success"] = (err is None) or (err == 0) or (err == "0")
+
                 # Extract nested details if available
                 details = event.get("details", {})
-                if details:
-                    if "sock_info" in details:
-                        row["domain"] = details["sock_info"].get("domain")
-                        row["protocol"] = details["sock_info"].get("type")
-                    if "len" in details:
-                        row["bytes"] = details["len"]
-                    if "optname" in details:
-                        row["option"] = details["optname"]
+
+                # IO Category & Bytes Logic
+                call_type = row["type"]
+                row["io_category"] = "Other"
+
+                if call_type in ["read", "recv", "recvfrom", "recvmsg"]:
+                    row["io_category"] = "RX (Download)"
+                elif call_type in ["write", "send", "sendto", "sendmsg"]:
+                    row["io_category"] = "TX (Upload)"
+
+                # Determine effective bytes
+                bytes_val = details.get("len", 0)
+                if (
+                    row["success"]
+                    and isinstance(row["return_value"], int)
+                    and row["return_value"] > 0
+                ):
+                    # For I/O functions, return value is often the bytes transferred
+                    if row["io_category"] != "Other":
+                        row["bytes"] = row["return_value"]
+                    else:
+                        row["bytes"] = bytes_val
+                else:
+                    row["bytes"] = bytes_val
+
+                # Extract Socket Info if available
+                if "sock_info" in details:
+                    row["domain"] = details["sock_info"].get("domain")
+                    row["protocol"] = details["sock_info"].get("type")
+                if "optname" in details:
+                    row["option"] = details["optname"]
 
                 records.append(row)
             except json.JSONDecodeError:
@@ -65,12 +91,18 @@ def process_single_trace(filename, content_str):
     return records
 
 
+# -----------------------------------------------------------------------------
+# 2. DATA LOADING (ARCHIVE HANDLING)
+# -----------------------------------------------------------------------------
+
+
 @st.cache_data
 def load_data_from_archive(file_obj):
     """
     Detects archive type (ZIP or TAR) and extracts traces into a DataFrame.
     """
     all_records = []
+    metadata = {"cmd": "Unknown command"}
     filename = file_obj.name.lower()
 
     try:
@@ -78,28 +110,60 @@ def load_data_from_archive(file_obj):
         if filename.endswith(".zip"):
             with zipfile.ZipFile(file_obj) as z:
                 for fname in z.namelist():
+                    # Read Traces
                     if fname.endswith(".json") and not fname.startswith("__MACOSX"):
                         with z.open(fname) as f:
                             content = f.read().decode("utf-8", errors="ignore")
                             all_records.extend(process_single_trace(fname, content))
 
-        # Handle TAR files (including .gz, .tgz)
+                    # Read Metadata (args or cmd file)
+                    elif (
+                        os.path.basename(fname) in ["args", "cmd", "command"]
+                        or "meta/" in fname
+                    ):
+                        try:
+                            with z.open(fname) as f:
+                                content = (
+                                    f.read().decode("utf-8", errors="ignore").strip()
+                                )
+                                # Simple heuristic: if it looks like a command
+                                if len(content) > 0:
+                                    metadata["cmd"] = content
+                        except:
+                            pass
+
+        # Handle TAR files
         elif filename.endswith((".tar", ".tar.gz", ".tgz", ".gz")):
             with tarfile.open(fileobj=file_obj, mode="r:*") as tar:
                 for member in tar:
-                    if member.isfile() and member.name.endswith(".json"):
-                        f = tar.extractfile(member)
-                        if f:
-                            content = f.read().decode("utf-8", errors="ignore")
-                            all_records.extend(
-                                process_single_trace(member.name, content)
-                            )
+                    if member.isfile():
+                        # Read Traces
+                        if member.name.endswith(".json"):
+                            f = tar.extractfile(member)
+                            if f:
+                                content = f.read().decode("utf-8", errors="ignore")
+                                all_records.extend(
+                                    process_single_trace(member.name, content)
+                                )
+
+                        # Read Metadata
+                        elif (
+                            os.path.basename(member.name) in ["args", "cmd", "command"]
+                            or "meta/" in member.name
+                        ):
+                            f = tar.extractfile(member)
+                            if f:
+                                content = (
+                                    f.read().decode("utf-8", errors="ignore").strip()
+                                )
+                                if len(content) > 0:
+                                    metadata["cmd"] = content
 
     except Exception as e:
         st.error(f"Error reading archive: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(), metadata
 
-    return pd.DataFrame(all_records)
+    return pd.DataFrame(all_records), metadata
 
 
 def preprocess_data(df):
@@ -109,51 +173,51 @@ def preprocess_data(df):
     if df.empty:
         return df
 
-    # Convert timestamp to datetime objects
+    # Convert timestamp
     df["dt_timestamp"] = pd.to_datetime(df["timestamp"], unit="us")
 
-    # Calculate relative time in seconds (for trace duration)
+    # Relative time (Start = 0s)
     start_time = df["timestamp"].min()
     df["rel_time"] = (df["timestamp"] - start_time) / 1_000_000.0
-
-    # Ensure bytes column exists and is numeric
-    if "bytes" not in df.columns:
-        df["bytes"] = 0
-    else:
-        df["bytes"] = df["bytes"].fillna(0)
-
-    # Determine success status
-    # If errno is None or 0, it is a success. Otherwise, it is an error.
-    df["success"] = df["errno"].isna() | (df["errno"] == 0) | (df["errno"] == "0")
 
     return df
 
 
 # -----------------------------------------------------------------------------
-# 2. UI RENDERING FUNCTIONS
+# 3. UI RENDERING
 # -----------------------------------------------------------------------------
 
 
-def render_overview(df):
+def render_overview(df, metadata):
     """
     Displays the Global Overview tab with KPIs and Charts.
     """
     st.subheader("Overview")
 
-    # --- KPI Section ---
+    # 1. Command Line Display
+    cmd = metadata.get("cmd", "Unknown")
+    if cmd != "Unknown command":
+        st.caption("Test Command Executed:")
+        st.code(cmd, language="bash")
+
+    st.markdown("---")
+
+    # 2. KPIs
     duration = df["rel_time"].max()
     total_calls = len(df)
 
-    # Filter for real errors (excluding non-blocking waits)
+    # Filter for real blocking errors (exclude EAGAIN/Wait)
     errors = df[~df["success"]]
-    # Assuming errno contains strings like 'EAGAIN'. If pure ints, adjust logic.
-    non_blocking_codes = ["EAGAIN", "EWOULDBLOCK", "EINPROGRESS"]
-    real_errors_count = errors[~errors["errno"].isin(non_blocking_codes)].shape[0]
+    non_blocking = ["EAGAIN", "EWOULDBLOCK", "EINPROGRESS"]
+    # Check if errno is string or int before filtering
+    real_errors_count = 0
+    if not errors.empty:
+        real_errors_count = errors[
+            ~errors["errno"].astype(str).isin(non_blocking)
+        ].shape[0]
 
-    # Calculate volume
     vol_mb = df["bytes"].sum() / (1024 * 1024)
 
-    # Display Metrics
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Trace Duration", f"{duration:.2f} s")
     k2.metric("System Calls", f"{total_calls:,}")
@@ -162,17 +226,17 @@ def render_overview(df):
 
     st.markdown("---")
 
-    # --- Charts Section ---
+    # 3. Charts Section
     st.subheader("System Call Analysis")
     col_chart1, col_chart2 = st.columns(2)
 
-    # Chart 1: Pie Chart (Global Distribution)
+    # Chart A: Pie Chart (Global Distribution)
     with col_chart1:
         st.markdown("**Distribution by Call Type**")
         call_counts = df["type"].value_counts().reset_index()
         call_counts.columns = ["Call Type", "Count"]
 
-        # Aggregate small values to 'Other' for cleaner visualization
+        # Aggregate small values
         if len(call_counts) > 10:
             top_calls = call_counts.head(9)
             other_count = call_counts.iloc[9:]["Count"].sum()
@@ -190,7 +254,7 @@ def render_overview(df):
         fig_pie.update_layout(margin=dict(t=20, b=20, l=20, r=20))
         st.plotly_chart(fig_pie, use_container_width=True)
 
-    # Chart 2: Bar Chart (Function Usage & Success Rate)
+    # Chart B: Bar Chart (Function Usage & Success Rate)
     with col_chart2:
         st.markdown("**Function Usage (Success vs Error)**")
 
@@ -200,7 +264,6 @@ def render_overview(df):
             {True: "Success", False: "Error/Wait"}
         )
 
-        # Sort order based on frequency
         order = df["type"].value_counts().index.tolist()
 
         fig_bar = px.bar(
@@ -218,7 +281,7 @@ def render_overview(df):
 
 
 # -----------------------------------------------------------------------------
-# 3. MAIN APPLICATION LOGIC
+# 4. MAIN APPLICATION LOGIC
 # -----------------------------------------------------------------------------
 
 # Sidebar
@@ -231,7 +294,7 @@ uploaded_file = st.sidebar.file_uploader(
 if uploaded_file is not None:
     # 1. Load Data
     with st.spinner("Processing uploaded archive..."):
-        raw_df = load_data_from_archive(uploaded_file)
+        raw_df, metadata = load_data_from_archive(uploaded_file)
 
     if raw_df.empty:
         st.error(
@@ -239,7 +302,7 @@ if uploaded_file is not None:
         )
         st.stop()
 
-    # 2. Preprocess Data (Enrichment)
+    # 2. Preprocess
     df = preprocess_data(raw_df)
 
     # 3. Header
@@ -249,18 +312,15 @@ if uploaded_file is not None:
     )
 
     # 4. Tabs
-    tab1, tab2, tab3 = st.tabs(
-        ["Global Overview", "Connection Inspector", "Advanced Analysis"]
-    )
+    tab1, tab2 = st.tabs(["Global Overview", "Coming Soon"])
 
     with tab1:
-        render_overview(df)
+        render_overview(df, metadata)
 
     with tab2:
-        st.info("Autre.")
-
-    with tab3:
-        st.info("Autre.")
+        st.info(
+            "Advanced analysis (I/O Buffers, Latency Heatmaps) coming in the next update."
+        )
 
 else:
     # Welcome Screen
