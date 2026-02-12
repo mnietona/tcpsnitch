@@ -267,7 +267,7 @@ def render_overview(df, metadata):
         )
         fig_pie.update_traces(textposition="inside", textinfo="percent+label")
         fig_pie.update_layout(margin=dict(t=20, b=20, l=20, r=20))
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, width="stretch")
 
     with col_chart2:
         st.markdown("**Function Usage (Success vs Error)**")
@@ -290,7 +290,7 @@ def render_overview(df, metadata):
             category_orders={"type": order},
         )
         fig_bar.update_layout(margin=dict(t=20, b=20, l=20, r=20))
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(fig_bar, width="stretch")
 
 
 # -----------------------------------------------------------------------------
