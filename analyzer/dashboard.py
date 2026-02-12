@@ -102,7 +102,7 @@ def load_data_from_archive(file_obj):
     Detects archive type (ZIP or TAR) and extracts traces into a DataFrame.
     """
     all_records = []
-    metadata = {"cmd": "Unknown command"}
+    metadata = {}  # Store keys as filenames (e.g., 'cmd', 'kernel', 'args')
     filename = file_obj.name.lower()
 
     try:
@@ -116,19 +116,23 @@ def load_data_from_archive(file_obj):
                             content = f.read().decode("utf-8", errors="ignore")
                             all_records.extend(process_single_trace(fname, content))
 
-                    # Read Metadata (args or cmd file)
+                    # Read Metadata (files in meta/ or specific names)
+                    # We store them using the filename as the key
                     elif (
-                        os.path.basename(fname) in ["args", "cmd", "command"]
+                        os.path.basename(fname)
+                        in ["args", "cmd", "command", "kernel_release", "uname"]
                         or "meta/" in fname
                     ):
                         try:
-                            with z.open(fname) as f:
-                                content = (
-                                    f.read().decode("utf-8", errors="ignore").strip()
-                                )
-                                # Simple heuristic: if it looks like a command
-                                if len(content) > 0:
-                                    metadata["cmd"] = content
+                            if not fname.endswith("/"):  # Ignore folders
+                                with z.open(fname) as f:
+                                    content = (
+                                        f.read()
+                                        .decode("utf-8", errors="ignore")
+                                        .strip()
+                                    )
+                                    key_name = os.path.basename(fname)
+                                    metadata[key_name] = content
                         except:
                             pass
 
@@ -148,7 +152,8 @@ def load_data_from_archive(file_obj):
 
                         # Read Metadata
                         elif (
-                            os.path.basename(member.name) in ["args", "cmd", "command"]
+                            os.path.basename(member.name)
+                            in ["args", "cmd", "command", "kernel_release", "uname"]
                             or "meta/" in member.name
                         ):
                             f = tar.extractfile(member)
@@ -156,8 +161,8 @@ def load_data_from_archive(file_obj):
                                 content = (
                                     f.read().decode("utf-8", errors="ignore").strip()
                                 )
-                                if len(content) > 0:
-                                    metadata["cmd"] = content
+                                key_name = os.path.basename(member.name)
+                                metadata[key_name] = content
 
     except Exception as e:
         st.error(f"Error reading archive: {e}")
@@ -190,15 +195,26 @@ def preprocess_data(df):
 
 def render_overview(df, metadata):
     """
-    Displays the Global Overview tab with KPIs and Charts.
+    Displays the Global Overview: Command line, KPIs, and Charts.
     """
     st.subheader("Overview")
 
-    # 1. Command Line Display
-    cmd = metadata.get("cmd", "Unknown")
-    if cmd != "Unknown command":
-        st.caption("Test Command Executed:")
-        st.code(cmd, language="bash")
+    # 1. Command Line Display (Dynamic Priority)
+    # We look for 'cmd', then 'args', then 'command'
+    cmd_text = (
+        metadata.get("cmd")
+        or metadata.get("args")
+        or metadata.get("command")
+        or "Unknown command"
+    )
+
+    st.caption("Test Command Executed:")
+    st.code(cmd_text, language="bash")
+
+    # Optional: Display Kernel if available (to verify it's not mixed up)
+    if "kernel_release" in metadata or "uname" in metadata:
+        kernel = metadata.get("kernel_release") or metadata.get("uname")
+        st.caption(f"Kernel: {kernel}")
 
     st.markdown("---")
 
@@ -209,9 +225,10 @@ def render_overview(df, metadata):
     # Filter for real blocking errors (exclude EAGAIN/Wait)
     errors = df[~df["success"]]
     non_blocking = ["EAGAIN", "EWOULDBLOCK", "EINPROGRESS"]
-    # Check if errno is string or int before filtering
+
     real_errors_count = 0
     if not errors.empty:
+        # Convert errno to string to safely compare with the list
         real_errors_count = errors[
             ~errors["errno"].astype(str).isin(non_blocking)
         ].shape[0]
@@ -226,17 +243,15 @@ def render_overview(df, metadata):
 
     st.markdown("---")
 
-    # 3. Charts Section
+    # 3. Charts Section (Same as before)
     st.subheader("System Call Analysis")
     col_chart1, col_chart2 = st.columns(2)
 
-    # Chart A: Pie Chart (Global Distribution)
     with col_chart1:
         st.markdown("**Distribution by Call Type**")
         call_counts = df["type"].value_counts().reset_index()
         call_counts.columns = ["Call Type", "Count"]
 
-        # Aggregate small values
         if len(call_counts) > 10:
             top_calls = call_counts.head(9)
             other_count = call_counts.iloc[9:]["Count"].sum()
@@ -254,11 +269,9 @@ def render_overview(df, metadata):
         fig_pie.update_layout(margin=dict(t=20, b=20, l=20, r=20))
         st.plotly_chart(fig_pie, use_container_width=True)
 
-    # Chart B: Bar Chart (Function Usage & Success Rate)
     with col_chart2:
         st.markdown("**Function Usage (Success vs Error)**")
 
-        # Group by type and success status
         usage_df = df.groupby(["type", "success"]).size().reset_index(name="count")
         usage_df["status"] = usage_df["success"].map(
             {True: "Success", False: "Error/Wait"}
