@@ -40,3 +40,10 @@ test_netlink/
 *.pcap
 logs.txt
 meta/
+
+# --- Divers ---
+*.log
+*.tmp
+*.bak
+*.qlog
+firefox/
