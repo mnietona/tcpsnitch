@@ -129,8 +129,35 @@ override(send, ssize_t, 4, const void *a, size_t b, int c);
 override(recv, ssize_t, 4, void *a, size_t b, int c);
 #endif
 
-override(sendto, ssize_t, 6, const void *a, size_t b, int c,
-         const struct sockaddr *d, socklen_t e);
+//override(sendto, ssize_t, 6, const void *a, size_t b, int c, const struct sockaddr *d, socklen_t e);
+
+// pas possible d'override sendto donc on fait a la main
+typedef ssize_t (*sendto_type)(int fd, const void *buf, size_t len, int flags,
+                               const struct sockaddr *dest_addr, socklen_t addrlen);
+sendto_type orig_sendto;
+
+EXPORT ssize_t sendto(int fd, const void *buf, size_t len, int flags,
+                      const struct sockaddr *dest_addr, socklen_t addrlen) {
+
+    if (!orig_sendto) orig_sendto = (sendto_type)dlsym(RTLD_NEXT, "sendto");
+
+    if (is_inet_socket(fd) && conf_opt_c && dest_addr) {
+        sock_start_capture(fd, dest_addr);
+    }
+
+    ssize_t ret = orig_sendto(fd, buf, len, flags, dest_addr, addrlen);
+    int err = errno;
+
+    if (is_inet_socket(fd)) {
+        sock_ev_sendto(fd, ret, err, buf, len, flags, dest_addr, addrlen);
+    }
+
+    errno = err;
+    return ret;
+}
+
+
+
 #if defined(__ANDROID__) && __ANDROID_API__ <= 19
 override(recvfrom, ssize_t, 6, void *a, size_t b, unsigned int c,
          const struct sockaddr *d, socklen_t *e);
