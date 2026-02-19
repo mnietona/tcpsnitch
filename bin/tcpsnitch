@@ -22,14 +22,14 @@ readonly CWD=$(pwd)
 
 # Option default values
 OPT_A=0
-OPT_B=0
-OPT_C=0
-OPT_D=""
+OPT_B=4096   
+OPT_C=1     
+OPT_D=""     
 OPT_F=2
 OPT_L=1
 OPT_P=0
 OPT_T=1000
-OPT_U=0
+OPT_U=100000 
 OPT_V=0
 
 # Options saved in meta files
@@ -53,8 +53,8 @@ usage() {
     echo "<app>       cmd/package to spy on."
     echo "<args>      args to <app>."
     echo "-a          instrument & launch app on connected android device."
-    echo "-b <bytes>  dump tcp_info every <bytes> (0 means NO dump, def 0)."
-    echo "-c          activate capture of pcap traces (only on Linux)."
+    echo "-b <bytes>  dump tcp_info every <bytes> (def 4096)."
+    echo "-c          capture is ON by default. (This flag is now a no-op)."
     echo "-d <dir>    Base output directory (defaults to ./tcpsnitch_output)."
     echo "-f <lvl>    verbosity of logs to file (0 to 5, defaults to 2)."
     echo "-h          show this help text."
@@ -62,7 +62,7 @@ usage() {
     echo "-l <lvl>    verbosity of logs to stderr (0 to 5, defaults to 2)."
     echo "-p          pedantic, ask a lot of annoying questions."
     echo "-t <msec>   dump to JSON file every <msec> (def. 1000)."
-    echo "-u <usec>   dump tcp_info every <usec> (0 means default, Linux: 100ms)."
+    echo "-u <usec>   dump tcp_info every <usec> (def 100000 i.e. 100ms)."
     echo "-v          activate verbose output (shows app stdout/stderr)."
     echo "--version   print ${NAME} version."
 }
