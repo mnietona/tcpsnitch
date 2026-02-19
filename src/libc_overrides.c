@@ -4,7 +4,6 @@
  * Date: October, 2016
  */
 
-
 #include "lib.h"
 #include <arpa/inet.h>
 #include <dlfcn.h>
@@ -129,9 +128,7 @@ override(send, ssize_t, 4, const void *a, size_t b, int c);
 override(recv, ssize_t, 4, void *a, size_t b, int c);
 #endif
 
-//override(sendto, ssize_t, 6, const void *a, size_t b, int c, const struct sockaddr *d, socklen_t e);
 
-// pas possible d'override sendto donc on fait a la main
 typedef ssize_t (*sendto_type)(int fd, const void *buf, size_t len, int flags,
                                const struct sockaddr *dest_addr, socklen_t addrlen);
 sendto_type orig_sendto;
@@ -156,8 +153,6 @@ EXPORT ssize_t sendto(int fd, const void *buf, size_t len, int flags,
     return ret;
 }
 
-
-
 #if defined(__ANDROID__) && __ANDROID_API__ <= 19
 override(recvfrom, ssize_t, 6, void *a, size_t b, unsigned int c,
          const struct sockaddr *d, socklen_t *e);
@@ -176,20 +171,9 @@ override(recvmsg, ssize_t, 3, struct msghdr *a, unsigned int b);
 override(sendmsg, ssize_t, 3, const struct msghdr *a, int b);
 override(recvmsg, ssize_t, 3, struct msghdr *a, int b);
 #endif
-
-#if defined(__ANDROID__) && __ANDROID_API__ >= 21
-override(sendmmsg, int, 4, const struct mmsghdr *a, unsigned int b, int c);
-override(recvmmsg, int, 5, struct mmsghdr *a, unsigned int b, int c,
-         const struct timespec *d);
-#elif LIBC_VERSION > 219  // Absolutely not sure this is the right boundary!
 override(sendmmsg, int, 4, struct mmsghdr *a, unsigned int b, int c);
 override(recvmmsg, int, 5, struct mmsghdr *a, unsigned int b, int c,
          struct timespec *d);
-#else
-override(sendmmsg, int, 4, struct mmsghdr *a, unsigned int b, int c);
-override(recvmmsg, int, 5, struct mmsghdr *a, unsigned int b, int c,
-         const struct timespec *d);
-#endif
 
 override(getsockname, int, 3, struct sockaddr *a, socklen_t *b);
 override(getpeername, int, 3, struct sockaddr *a, socklen_t *b);
