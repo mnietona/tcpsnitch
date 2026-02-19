@@ -35,6 +35,7 @@
 
 void sock_ev_forked_socket(int fd, SockInfo *sock_info);
 void sock_ev_ghost_socket(int fd);
+static void dump_events_as_json(Socket *sock);
 
 static pthread_mutex_t connections_count_mutex = MUTEX_ERRORCHECK;
 static int connections_count = 0;
@@ -116,7 +117,11 @@ static SockEvent *alloc_event(SockEventType type, int return_value, int err,
         ev->success = success;
         ev->err = err;
         ev->id = id;
+#ifdef SYS_gettid
         ev->thread_id = syscall(SYS_gettid);
+#else
+        ev->thread_id = getpid(); // Fallback si gettid n'existe pas
+#endif
         return ev;
 }
 
@@ -165,6 +170,8 @@ static void free_events_list(SockEventNode *head) {
         }
 }
 
+#define MAX_EVENTS_BEFORE_FLUSH 2000 // Sécurité mémoire
+
 static void push_event(Socket *sock, SockEvent *ev) {
         SockEventNode *node = (SockEventNode *)my_malloc(sizeof(SockEventNode));
         node->data = ev;
@@ -177,6 +184,13 @@ static void push_event(Socket *sock, SockEvent *ev) {
 
         sock->tail = node;
         sock->events_count++;
+
+
+        if (sock->events_count >= MAX_EVENTS_BEFORE_FLUSH) {
+
+             dump_events_as_json(sock);
+
+        }
         return;
 }
 
@@ -406,15 +420,30 @@ void free_socket(Socket *sock) {
         free(sock);
 }
 
-void sock_start_capture(int fd, const struct sockaddr *addr_to) {
-        LOG(INFO, "Starting packet capture.");
-        LOG_FUNC_INFO;
-        Socket *sock = ra_get_and_lock_elem(fd);
+// Used for any event that duplicates a socket, such as dup() or accept().
+void sock_start_capture(int fd, const struct sockaddr *addr_to) {        Socket *sock = ra_get_and_lock_elem(fd);
         if (!sock) goto error_out;
 
-        // We force a bind if the socket is not bound. This allows us to know
-        // the source port and use a more specific filter for the capture.
-        if (!sock->bound) force_bind(fd, sock, addr_to->sa_family == AF_INET6);
+        if (sock->capture_switch != NULL) {
+             ra_unlock_elem(fd);
+             return; 
+        }
+
+        LOG(INFO, "Starting packet capture.");
+        LOG_FUNC_INFO;
+
+
+        if (!sock->bound) {
+             force_bind(fd, sock, addr_to->sa_family == AF_INET6);
+             
+             sock->bound = true;
+
+            struct sockaddr_storage ss;
+             socklen_t slen = sizeof(ss);
+             if (getsockname(fd, (struct sockaddr *)&ss, &slen) == 0) {
+                 memcpy(&sock->bound_addr, &ss, slen);
+             }
+        }
 
         // Build pcap file path
         char *pcap_file_path = alloc_pcap_path_str(sock);
