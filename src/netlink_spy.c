@@ -11,9 +11,8 @@
 #include <linux/rtnetlink.h>
 #include "sock_events.h" 
 #include "logger.h"
-
-
-// TODO : check si on esy sur le bon PID quand on detecte
+#include <ifaddrs.h>
+#include <net/if.h>
 
 // Utile pour parser les attributs Netlink
 void parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len) {
@@ -45,10 +44,48 @@ static int open_netlink_socket(void) {
     return sock;
 }
 
+static void dump_initial_interfaces(int netlink_sock_fd) {
+    struct ifaddrs *ifaddr, *ifa;
+    int family, s;
+    char host[INET6_ADDRSTRLEN];
+
+    if (getifaddrs(&ifaddr) == -1) {
+        LOG(ERROR, "getifaddrs failed");
+        return;
+    }
+
+    // On parcourt les interfaces existantes au démarrage
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL) continue;
+
+        family = ifa->ifa_addr->sa_family;
+
+        // On s'intéresse qu'à IPv4 (AF_INET) et IPv6 (AF_INET6)
+        if (family == AF_INET || family == AF_INET6) {
+            s = getnameinfo(ifa->ifa_addr,
+                    (family == AF_INET) ? sizeof(struct sockaddr_in) :
+                                          sizeof(struct sockaddr_in6),
+                    host, sizeof(host), 
+                    NULL, 0, NI_NUMERICHOST);
+            
+            if (s != 0) {
+                continue;
+            }
+
+            int if_index = if_nametoindex(ifa->ifa_name);
+            
+            sock_ev_netlink(netlink_sock_fd, 16 /* RTM_NEWADDR */, if_index, family, host);
+            
+            LOG(INFO, "Initial Interface: %s [%d] -> %s", ifa->ifa_name, if_index, host);
+        }
+    }
+
+    freeifaddrs(ifaddr);
+}
+
 static void* netlink_monitor_thread(void* arg) {
     (void)arg;
     
-    // Log de démarrage
     LOG(INFO, "Netlink spy thread started (monitoring IP/Route changes).");
 
     int sock = open_netlink_socket();
@@ -59,6 +96,8 @@ static void* netlink_monitor_thread(void* arg) {
 
     // On enregistre ce socket dans le système TCPSnitch
     sock_ev_netlink_init(sock);
+
+    dump_initial_interfaces(sock);
 
     char buffer[8192];
     struct iovec iov = { buffer, sizeof(buffer) };
@@ -74,7 +113,7 @@ static void* netlink_monitor_thread(void* arg) {
             if (nh->nlmsg_type == NLMSG_DONE) break;
             if (nh->nlmsg_type == NLMSG_ERROR) continue;
 
-            // Gestion des ADRESSES (IP ajoutée/supprimée)
+            // Gestion des ADRESSES
             if (nh->nlmsg_type == RTM_NEWADDR || nh->nlmsg_type == RTM_DELADDR) {
                 struct ifaddrmsg *ifa = (struct ifaddrmsg *)NLMSG_DATA(nh);
                 struct rtattr *tb[IFA_MAX + 1];
@@ -88,22 +127,14 @@ static void* netlink_monitor_thread(void* arg) {
                     inet_ntop(ifa->ifa_family, RTA_DATA(tb[IFA_LOCAL]), ip_str, sizeof(ip_str));
                 }
 
-                // Log textuel 
                 const char *action = (nh->nlmsg_type == RTM_NEWADDR) ? "New Address" : "Address Removed";
                 LOG(INFO, "NETLINK EVENT: %s detected (Interface: %d, IP: %s)", action, ifa->ifa_index, ip_str);
-
-                // Envoi au JSON
                 sock_ev_netlink(sock, nh->nlmsg_type, ifa->ifa_index, ifa->ifa_family, ip_str);
             }
-            
-            // Gestion des ROUTES (Route ajoutée/supprimée)
+            // Gestion des ROUTES
             else if (nh->nlmsg_type == RTM_NEWROUTE || nh->nlmsg_type == RTM_DELROUTE) {
-                
-                // Log textuel 
                 const char *action = (nh->nlmsg_type == RTM_NEWROUTE) ? "New Route" : "Route Removed";
                 LOG(INFO, "NETLINK EVENT: %s detected in routing table", action);
-
-                // Envoi au JSON
                 sock_ev_netlink(sock, nh->nlmsg_type, 0, 0, NULL);
             }
         }
