@@ -53,9 +53,6 @@ static const IntStrPair SOL_SOCKET_OPTIONS[] = {
 #ifdef SO_PASSCRED
     ADD(SO_PASSCRED),
 #endif
-#ifdef SO_PASSCRED
-    ADD(SO_PASSCRED),
-#endif
 #ifdef SO_PEERCRED
     ADD(SO_PEERCRED),
 #endif
@@ -94,9 +91,6 @@ static const IntStrPair SOL_SOCKET_OPTIONS[] = {
 #endif
 #ifdef SO_PEERNAME
     ADD(SO_PEERNAME),
-#endif
-#ifdef SO_TIMESTAMP
-    ADD(SO_TIMESTAMP),
 #endif
 #ifdef SO_TIMESTAMP
     ADD(SO_TIMESTAMP),

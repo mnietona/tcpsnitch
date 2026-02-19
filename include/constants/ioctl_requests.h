@@ -100,9 +100,6 @@ static const IntStrPair IOCTL_REQUESTS[] = {
 #ifdef TIOCSSOFTCAR
     ADD(TIOCSSOFTCAR),
 #endif
-#ifdef FIONREAD
-    ADD(FIONREAD),
-#endif
 #ifdef TIOCINQ
     ADD(TIOCINQ),
 #endif
@@ -197,7 +194,7 @@ static const IntStrPair IOCTL_REQUESTS[] = {
 #ifdef SIOCAX25SETPARMS
     ADD(SIOCAX25SETPARMS),
 #endif
-// <include/linux/,if_eql.h>
+// <include/linux/if_eql.h>
 #ifdef EQL_ENSLAVE
     ADD(EQL_ENSLAVE),
 #endif
@@ -558,7 +555,7 @@ static const IntStrPair IOCTL_REQUESTS[] = {
 #ifdef SIOCGIFTXQLEN
     ADD(SIOCGIFTXQLEN),
 #endif
-#ifdef SIOCSIFXQLEN
+#ifdef SIOCSIFTXQLEN
     ADD(SIOCSIFTXQLEN),
 #endif
 #ifdef SIOCETHTOOL
@@ -632,9 +629,6 @@ static const IntStrPair IOCTL_REQUESTS[] = {
 #endif
 #ifdef SIOCPROTOPRIVATE
     ADD(SIOCPROTOPRIVATE),
-#endif
-#ifdef SIOCADDRTOLD
-    ADD(SIOCADDRTOLD), ,
 #endif
 #ifdef SIOCADDRTOLD
     ADD(SIOCADDRTOLD),
