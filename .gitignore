@@ -47,3 +47,5 @@ meta/
 *.bak
 *.qlog
 firefox/
+*.txt
+run.sh
