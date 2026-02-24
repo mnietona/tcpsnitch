@@ -1,14 +1,14 @@
-
 #include "json_builder.h"
 #include <jansson.h>
 #include <netdb.h>
-#include <fcntl.h> 
-#include <string.h>      
+#include <fcntl.h>
+#include <string.h>
 #include "constants.h"
 #include "init.h"
 #include "lib.h"
 #include "logger.h"
 #include "string_builders.h"
+#include "tcp_info_extended.h"  
 #include <linux/rtnetlink.h>
 
 static json_t *my_json_object(void) {
@@ -31,12 +31,10 @@ static json_t *my_json_array(void) {
         return array;
 }
 
-/* Save reference to pointer with shorter name */
 typedef int (*add_type)(json_t *o, const char *k, json_t *v);
 static add_type add = &json_object_set_new;
 
 static json_t *build_sock_info(const SockInfo *sock_info) {
-        // We only fill it when the event is the first of the trace.
         if (!sock_info->filled) return NULL;
         json_t *json_si = my_json_object();
 
@@ -60,29 +58,24 @@ static json_t *build_sock_info(const SockInfo *sock_info) {
 
         add(json_si, "SOCK_CLOEXEC", json_boolean(sock_info->sock_cloexec));
         add(json_si, "SOCK_NONBLOCK", json_boolean(sock_info->sock_nonblock));
-
         return json_si;
 }
 
 static json_t *build_addr(const Addr *addr) {
         if (!addr->len) return NULL;
-
         json_t *json_addr = my_json_object();
-
         const struct sockaddr *sockaddr =
             (const struct sockaddr *)&addr->sockaddr_sto;
         if (sockaddr->sa_family == AF_INET)
                 add(json_addr, "sa_family", json_string("AF_INET"));
         else if (sockaddr->sa_family == AF_INET6)
                 add(json_addr, "sa_family", json_string("AF_INET6"));
-
         char *ip = alloc_ip_str(sockaddr);
         add(json_addr, "ip", json_string(ip));
         free(ip);
         char *port = alloc_port_str(sockaddr);
         add(json_addr, "port", json_string(port));
         free(port);
-
         return json_addr;
 }
 
@@ -100,7 +93,6 @@ static json_t *build_send_flags(int flags) {
 
 static json_t *build_recv_flags(int flags) {
         json_t *json_flags = my_json_object();
-
 #if !defined(__ANDROID__) || __ANDROID_API__ >= 21
         add(json_flags, "MSG_CMSG_CLOEXEC",
             json_boolean(flags & MSG_CMSG_CLOEXEC));
@@ -113,7 +105,6 @@ static json_t *build_recv_flags(int flags) {
         add(json_flags, "MSG_PEEK", json_boolean(flags & MSG_PEEK));
         add(json_flags, "MSG_TRUNC", json_boolean(flags & MSG_TRUNC));
         add(json_flags, "MSG_WAITALL", json_boolean(flags & MSG_WAITALL));
-
         return json_flags;
 }
 
@@ -171,8 +162,7 @@ static json_t *build_iovec(const Iovec *iovec) {
 
 static json_t *build_control_data(struct msghdr *msgh) {
         json_t *json_cd_list = my_json_array();
-        struct cmsghdr *cmsg;
-        cmsg = CMSG_FIRSTHDR(msgh);
+        struct cmsghdr *cmsg = CMSG_FIRSTHDR(msgh);
         if (cmsg) {
                 json_t *json_cd = my_json_object();
                 add(json_cd, "cmsg_level", json_integer(cmsg->cmsg_level));
@@ -184,7 +174,6 @@ static json_t *build_control_data(struct msghdr *msgh) {
 
 static json_t *build_msghdr(const Msghdr *msg) {
         json_t *json_msghdr = my_json_object();
-        // Flags are only for recvmsg()
         if (msg->flags) add(json_msghdr, "flags", build_recv_flags(msg->flags));
         add(json_msghdr, "iovec", build_iovec(&msg->iovec));
         add(json_msghdr, "control_data_len",
@@ -356,14 +345,10 @@ static json_t *build_sol_ipv6_optval(const Sockopt *sockopt) {
 
 static json_t *build_optval(const Sockopt *sockopt) {
         switch (sockopt->level) {
-                case SOL_SOCKET:
-                        return build_sol_socket_optval(sockopt);
-                case SOL_TCP:
-                        return build_sol_tcp_optval(sockopt);
-                case SOL_IP:
-                        return build_sol_ip_optval(sockopt);
-                case SOL_IPV6:
-                        return build_sol_ipv6_optval(sockopt);
+                case SOL_SOCKET: return build_sol_socket_optval(sockopt);
+                case SOL_TCP:    return build_sol_tcp_optval(sockopt);
+                case SOL_IP:     return build_sol_ip_optval(sockopt);
+                case SOL_IPV6:   return build_sol_ipv6_optval(sockopt);
         }
         return NULL;
 }
@@ -372,11 +357,9 @@ static void add_sockopt(json_t *details, const Sockopt *sockopt) {
         char *level = alloc_sockopt_level(sockopt->level);
         add(details, "level", json_string(level));
         free(level);
-
         char *optname = alloc_sockopt_name(sockopt->level, sockopt->optname);
         add(details, "optname", json_string(optname));
         free(optname);
-
         add(details, "optlen", json_integer(sockopt->optlen));
         if (sockopt->optlen) add(details, "optval", build_optval(sockopt));
 }
@@ -406,9 +389,9 @@ static void build_shared_fields(json_t *json_ev, const SockEvent *ev) {
         }
         add(json_ev, "thread_id", json_integer(ev->thread_id));
         add(json_ev, "fake_call", json_boolean(false));
-}
 
-#define DETAILS_FAILURE "json_object() failed. Cannot build event details."
+        add(json_ev, "repeat_count", json_integer(ev->repeat_count));
+}
 
 #define BUILD_EV_PRELUDE()                                   \
         json_t *json_ev = my_json_object();                  \
@@ -714,7 +697,7 @@ static json_t *build_sock_ev_fcntl(const SockEvFcntl *ev) {
                 case F_GETSIG:
                 case F_GETLEASE:
                 case F_GETPIPE_SZ:
-                        break;  // Arg: void
+                        break;
                 case F_SETFD:
                         add_fd_flags(d, ev->arg);
                         break;
@@ -727,7 +710,7 @@ static json_t *build_sock_ev_fcntl(const SockEvFcntl *ev) {
                 case F_SETSIG:
                 case F_SETLEASE:
                 case F_NOTIFY:
-                case F_SETPIPE_SZ:  // Arg: int
+                case F_SETPIPE_SZ:
                         add(d, "arg", json_integer(ev->arg));
                         break;
         }
@@ -738,26 +721,16 @@ static json_t *build_sock_ev_fcntl(const SockEvFcntl *ev) {
 
 static json_t *build_sock_ev_epoll_ctl(const SockEvEpollCtl *ev) {
         BUILD_EV_PRELUDE()
-
         const char *op;
         switch (ev->op) {
-                case EPOLL_CTL_ADD:
-                        op = "EPOLL_CTL_ADD";
-                        break;
-                case EPOLL_CTL_MOD:
-                        op = "EPOLL_CTL_MOD";
-                        break;
-                case EPOLL_CTL_DEL:
-                        op = "EPOLL_CTL_DEL";
-                        break;
-                default:
-                        op = "UNKNOWN";
-                        break;
+                case EPOLL_CTL_ADD: op = "EPOLL_CTL_ADD"; break;
+                case EPOLL_CTL_MOD: op = "EPOLL_CTL_MOD"; break;
+                case EPOLL_CTL_DEL: op = "EPOLL_CTL_DEL"; break;
+                default:            op = "UNKNOWN";        break;
         }
         add(json_details, "op", json_string(op));
         add(json_details, "requested_events",
             build_epoll_events(ev->requested_events));
-
         return json_ev;
 }
 
@@ -783,75 +756,74 @@ static json_t *build_sock_ev_fdopen(const SockEvFdopen *ev) {
         return json_ev;
 }
 
+
 static json_t *build_sock_ev_tcp_info(const SockEvTcpInfo *ev) {
         BUILD_EV_PRELUDE()
         add(json_ev, "fake_call", json_boolean(true));
 
-        struct tcp_info i = ev->info;
+        const struct tcp_info *i = &ev->info;
 
-        add(json_details, "state", json_integer(i.tcpi_state));
-        add(json_details, "ca_state", json_integer(i.tcpi_ca_state));
-        add(json_details, "retransmits", json_integer(i.tcpi_retransmits));
-        add(json_details, "probes", json_integer(i.tcpi_probes));
-        add(json_details, "backoff", json_integer(i.tcpi_backoff));
-        add(json_details, "options", json_integer(i.tcpi_options));
-        add(json_details, "snd_wscale", json_integer(i.tcpi_snd_wscale));
-        add(json_details, "rcv_wscale", json_integer(i.tcpi_rcv_wscale));
+        /* --- Champs 2016 (kernel < 3.12) ---------------------------------- */
+        add(json_details, "state",          json_integer(i->tcpi_state));
+        add(json_details, "ca_state",       json_integer(i->tcpi_ca_state));
+        add(json_details, "retransmits",    json_integer(i->tcpi_retransmits));
+        add(json_details, "probes",         json_integer(i->tcpi_probes));
+        add(json_details, "backoff",        json_integer(i->tcpi_backoff));
+        add(json_details, "options",        json_integer(i->tcpi_options));
+        add(json_details, "snd_wscale",     json_integer(i->tcpi_snd_wscale));
+        add(json_details, "rcv_wscale",     json_integer(i->tcpi_rcv_wscale));
 
-        add(json_details, "rto", json_integer(i.tcpi_rto));
-        add(json_details, "ato", json_integer(i.tcpi_ato));
-        add(json_details, "snd_mss", json_integer(i.tcpi_snd_mss));
-        add(json_details, "rcv_mss", json_integer(i.tcpi_rcv_mss));
+        add(json_details, "rto",            json_integer(i->tcpi_rto));
+        add(json_details, "ato",            json_integer(i->tcpi_ato));
+        add(json_details, "snd_mss",        json_integer(i->tcpi_snd_mss));
+        add(json_details, "rcv_mss",        json_integer(i->tcpi_rcv_mss));
 
-        add(json_details, "unacked", json_integer(i.tcpi_unacked));
-        add(json_details, "sacked", json_integer(i.tcpi_sacked));
-        add(json_details, "lost", json_integer(i.tcpi_lost));
-        add(json_details, "retrans", json_integer(i.tcpi_retrans));
-        add(json_details, "fackets", json_integer(i.tcpi_fackets));
+        add(json_details, "unacked",        json_integer(i->tcpi_unacked));
+        add(json_details, "sacked",         json_integer(i->tcpi_sacked));
+        add(json_details, "lost",           json_integer(i->tcpi_lost));
+        add(json_details, "retrans",        json_integer(i->tcpi_retrans));
+        add(json_details, "fackets",        json_integer(i->tcpi_fackets));
 
-        /* Times */
-        add(json_details, "last_data_sent",
-            json_integer(i.tcpi_last_data_sent));
-        add(json_details, "last_ack_sent", json_integer(i.tcpi_last_ack_sent));
-        add(json_details, "last_data_recv",
-            json_integer(i.tcpi_last_data_recv));
-        add(json_details, "last_ack_recv", json_integer(i.tcpi_last_ack_recv));
+        add(json_details, "last_data_sent", json_integer(i->tcpi_last_data_sent));
+        add(json_details, "last_ack_sent",  json_integer(i->tcpi_last_ack_sent));
+        add(json_details, "last_data_recv", json_integer(i->tcpi_last_data_recv));
+        add(json_details, "last_ack_recv",  json_integer(i->tcpi_last_ack_recv));
 
-        /* Metrics */
-        add(json_details, "pmtu", json_integer(i.tcpi_pmtu));
-        add(json_details, "rcv_ssthresh", json_integer(i.tcpi_rcv_ssthresh));
-        add(json_details, "rtt", json_integer(i.tcpi_rtt));
-        add(json_details, "rttvar", json_integer(i.tcpi_rttvar));
-        add(json_details, "snd_ssthresh", json_integer(i.tcpi_snd_ssthresh));
-        add(json_details, "snd_cwnd", json_integer(i.tcpi_snd_cwnd));
-        add(json_details, "advmss", json_integer(i.tcpi_advmss));
-        add(json_details, "reordering", json_integer(i.tcpi_reordering));
+        add(json_details, "pmtu",           json_integer(i->tcpi_pmtu));
+        add(json_details, "rcv_ssthresh",   json_integer(i->tcpi_rcv_ssthresh));
+        add(json_details, "rtt",            json_integer(i->tcpi_rtt));
+        add(json_details, "rttvar",         json_integer(i->tcpi_rttvar));
+        add(json_details, "snd_ssthresh",   json_integer(i->tcpi_snd_ssthresh));
+        add(json_details, "snd_cwnd",       json_integer(i->tcpi_snd_cwnd));
+        add(json_details, "advmss",         json_integer(i->tcpi_advmss));
+        add(json_details, "reordering",     json_integer(i->tcpi_reordering));
+        add(json_details, "rcv_rtt",        json_integer(i->tcpi_rcv_rtt));
+        add(json_details, "rcv_space",      json_integer(i->tcpi_rcv_space));
+        add(json_details, "total_retrans",  json_integer(i->tcpi_total_retrans));
 
-        add(json_details, "rcv_rtt", json_integer(i.tcpi_rcv_rtt));
-        add(json_details, "rcv_space", json_integer(i.tcpi_rcv_space));
-
-        add(json_details, "total_retrans", json_integer(i.tcpi_total_retrans));
+        /* --- Champs post-2016 (activés selon LINUX_VERSION_CODE) ---------- */
+        json_add_tcp_info_extended(json_details, i);
 
         return json_ev;
 }
 
 static json_t *build_sock_ev_netlink(const SockEvNetlink *ev) {
         BUILD_EV_PRELUDE()
-        
+
         const char *type_s = "UNKNOWN";
-        if (ev->netlink_msg_type == RTM_NEWADDR) type_s = "NEW_ADDR";
-        else if (ev->netlink_msg_type == RTM_DELADDR) type_s = "DEL_ADDR";
+        if      (ev->netlink_msg_type == RTM_NEWADDR)  type_s = "NEW_ADDR";
+        else if (ev->netlink_msg_type == RTM_DELADDR)  type_s = "DEL_ADDR";
         else if (ev->netlink_msg_type == RTM_NEWROUTE) type_s = "NEW_ROUTE";
         else if (ev->netlink_msg_type == RTM_DELROUTE) type_s = "DEL_ROUTE";
-        
+
         add(json_details, "msg_type", json_string(type_s));
         add(json_details, "if_index", json_integer(ev->if_index));
-        
-        if (ev->family == AF_INET) add(json_details, "family", json_string("IPv4"));
+
+        if      (ev->family == AF_INET)  add(json_details, "family", json_string("IPv4"));
         else if (ev->family == AF_INET6) add(json_details, "family", json_string("IPv6"));
-        
+
         if (ev->ip_address) add(json_details, "ip", json_string(ev->ip_address));
-        
+
         return json_ev;
 }
 
@@ -859,156 +831,102 @@ static json_t *build_sock_ev(const SockEvent *ev) {
         json_t *r = NULL;
         switch (ev->type) {
                 case SOCK_EV_SOCKET:
-                        r = build_sock_ev_socket((const SockEvSocket *)ev);
-                        break;
+                        r = build_sock_ev_socket((const SockEvSocket *)ev); break;
                 case SOCK_EV_FORKED_SOCKET:
-                        r = build_sock_ev_forked_socket(
-                            (const SockEvForkedSocket *)ev);
-                        break;
+                        r = build_sock_ev_forked_socket((const SockEvForkedSocket *)ev); break;
                 case SOCK_EV_GHOST_SOCKET:
-                        r = build_sock_ev_ghost_socket(
-                            (const SockEvGhostSocket *)ev);
-                        break;
+                        r = build_sock_ev_ghost_socket((const SockEvGhostSocket *)ev); break;
                 case SOCK_EV_BIND:
-                        r = build_sock_ev_bind((const SockEvBind *)ev);
-                        break;
+                        r = build_sock_ev_bind((const SockEvBind *)ev); break;
                 case SOCK_EV_CONNECT:
-                        r = build_sock_ev_connect((const SockEvConnect *)ev);
-                        break;
+                        r = build_sock_ev_connect((const SockEvConnect *)ev); break;
                 case SOCK_EV_SHUTDOWN:
-                        r = build_sock_ev_shutdown((const SockEvShutdown *)ev);
-                        break;
+                        r = build_sock_ev_shutdown((const SockEvShutdown *)ev); break;
                 case SOCK_EV_LISTEN:
-                        r = build_sock_ev_listen((const SockEvListen *)ev);
-                        break;
+                        r = build_sock_ev_listen((const SockEvListen *)ev); break;
                 case SOCK_EV_ACCEPT:
-                        r = build_sock_ev_accept((const SockEvAccept *)ev);
-                        break;
+                        r = build_sock_ev_accept((const SockEvAccept *)ev); break;
                 case SOCK_EV_ACCEPT4:
-                        r = build_sock_ev_accept4((const SockEvAccept4 *)ev);
-                        break;
+                        r = build_sock_ev_accept4((const SockEvAccept4 *)ev); break;
                 case SOCK_EV_GETSOCKOPT:
-                        r = build_sock_ev_getsockopt(
-                            (const SockEvGetsockopt *)ev);
-                        break;
+                        r = build_sock_ev_getsockopt((const SockEvGetsockopt *)ev); break;
                 case SOCK_EV_SETSOCKOPT:
-                        r = build_sock_ev_setsockopt(
-                            (const SockEvSetsockopt *)ev);
-                        break;
+                        r = build_sock_ev_setsockopt((const SockEvSetsockopt *)ev); break;
                 case SOCK_EV_SEND:
-                        r = build_sock_ev_send((const SockEvSend *)ev);
-                        break;
+                        r = build_sock_ev_send((const SockEvSend *)ev); break;
                 case SOCK_EV_RECV:
-                        r = build_sock_ev_recv((const SockEvRecv *)ev);
-                        break;
+                        r = build_sock_ev_recv((const SockEvRecv *)ev); break;
                 case SOCK_EV_SENDTO:
-                        r = build_sock_ev_sendto((const SockEvSendto *)ev);
-                        break;
+                        r = build_sock_ev_sendto((const SockEvSendto *)ev); break;
                 case SOCK_EV_RECVFROM:
-                        r = build_sock_ev_recvfrom((const SockEvRecvfrom *)ev);
-                        break;
+                        r = build_sock_ev_recvfrom((const SockEvRecvfrom *)ev); break;
                 case SOCK_EV_SENDMSG:
-                        r = build_sock_ev_sendmsg((const SockEvSendmsg *)ev);
-                        break;
+                        r = build_sock_ev_sendmsg((const SockEvSendmsg *)ev); break;
                 case SOCK_EV_RECVMSG:
-                        r = build_sock_ev_recvmsg((const SockEvRecvmsg *)ev);
-                        break;
+                        r = build_sock_ev_recvmsg((const SockEvRecvmsg *)ev); break;
 #if !defined(__ANDROID__) || __ANDROID_API__ >= 21
                 case SOCK_EV_SENDMMSG:
-                        r = build_sock_ev_sendmmsg((const SockEvSendmmsg *)ev);
-                        break;
+                        r = build_sock_ev_sendmmsg((const SockEvSendmmsg *)ev); break;
                 case SOCK_EV_RECVMMSG:
-                        r = build_sock_ev_recvmmsg((const SockEvRecvmmsg *)ev);
-                        break;
+                        r = build_sock_ev_recvmmsg((const SockEvRecvmmsg *)ev); break;
 #endif
                 case SOCK_EV_GETSOCKNAME:
-                        r = build_sock_ev_getsockname(
-                            (const SockEvGetsockname *)ev); // Modified
-                        break;
+                        r = build_sock_ev_getsockname((const SockEvGetsockname *)ev); break;
                 case SOCK_EV_GETPEERNAME:
-                        r = build_sock_ev_getpeername(
-                            (const SockEvGetpeername *)ev);
-                        break;
+                        r = build_sock_ev_getpeername((const SockEvGetpeername *)ev); break;
                 case SOCK_EV_SOCKATMARK:
-                        r = build_sock_ev_sockatmark(
-                            (const SockEvSockatmark *)ev);
-                        break;
+                        r = build_sock_ev_sockatmark((const SockEvSockatmark *)ev); break;
                 case SOCK_EV_ISFDTYPE:
-                        r = build_sock_ev_isfdtype((const SockEvIsfdtype *)ev);
-                        break;
+                        r = build_sock_ev_isfdtype((const SockEvIsfdtype *)ev); break;
                 case SOCK_EV_WRITE:
-                        r = build_sock_ev_write((const SockEvWrite *)ev);
-                        break;
+                        r = build_sock_ev_write((const SockEvWrite *)ev); break;
                 case SOCK_EV_READ:
-                        r = build_sock_ev_read((const SockEvRead *)ev);
-                        break;
+                        r = build_sock_ev_read((const SockEvRead *)ev); break;
                 case SOCK_EV_CLOSE:
-                        r = build_sock_ev_close((const SockEvClose *)ev);
-                        break;
+                        r = build_sock_ev_close((const SockEvClose *)ev); break;
                 case SOCK_EV_DUP:
-                        r = build_sock_ev_dup((const SockEvDup *)ev);
-                        break;
+                        r = build_sock_ev_dup((const SockEvDup *)ev); break;
                 case SOCK_EV_DUP2:
-                        r = build_sock_ev_dup2((const SockEvDup2 *)ev);
-                        break;
+                        r = build_sock_ev_dup2((const SockEvDup2 *)ev); break;
                 case SOCK_EV_DUP3:
-                        r = build_sock_ev_dup3((const SockEvDup3 *)ev);
-                        break;
+                        r = build_sock_ev_dup3((const SockEvDup3 *)ev); break;
                 case SOCK_EV_WRITEV:
-                        r = build_sock_ev_writev((const SockEvWritev *)ev);
-                        break;
+                        r = build_sock_ev_writev((const SockEvWritev *)ev); break;
                 case SOCK_EV_READV:
-                        r = build_sock_ev_readv((const SockEvReadv *)ev);
-                        break;
+                        r = build_sock_ev_readv((const SockEvReadv *)ev); break;
                 case SOCK_EV_IOCTL:
-                        r = build_sock_ev_ioctl((const SockEvIoctl *)ev);
-                        break;
+                        r = build_sock_ev_ioctl((const SockEvIoctl *)ev); break;
                 case SOCK_EV_SENDFILE:
-                        r = build_sock_ev_sendfile((const SockEvSendfile *)ev);
-                        break;
+                        r = build_sock_ev_sendfile((const SockEvSendfile *)ev); break;
                 case SOCK_EV_POLL:
-                        r = build_sock_ev_poll((const SockEvPoll *)ev);
-                        break;
+                        r = build_sock_ev_poll((const SockEvPoll *)ev); break;
                 case SOCK_EV_PPOLL:
-                        r = build_sock_ev_ppoll((const SockEvPpoll *)ev);
-                        break;
+                        r = build_sock_ev_ppoll((const SockEvPpoll *)ev); break;
                 case SOCK_EV_SELECT:
-                        r = build_sock_ev_select((const SockEvSelect *)ev);
-                        break;
+                        r = build_sock_ev_select((const SockEvSelect *)ev); break;
                 case SOCK_EV_PSELECT:
-                        r = build_sock_ev_pselect((const SockEvPselect *)ev);
-                        break;
+                        r = build_sock_ev_pselect((const SockEvPselect *)ev); break;
                 case SOCK_EV_FCNTL:
-                        r = build_sock_ev_fcntl((const SockEvFcntl *)ev);
-                        break;
+                        r = build_sock_ev_fcntl((const SockEvFcntl *)ev); break;
                 case SOCK_EV_EPOLL_CTL:
-                        r = build_sock_ev_epoll_ctl((const SockEvEpollCtl *)ev);
-                        break;
+                        r = build_sock_ev_epoll_ctl((const SockEvEpollCtl *)ev); break;
                 case SOCK_EV_EPOLL_WAIT:
-                        r = build_sock_ev_epoll_wait(
-                            (const SockEvEpollWait *)ev);
-                        break;
+                        r = build_sock_ev_epoll_wait((const SockEvEpollWait *)ev); break;
                 case SOCK_EV_EPOLL_PWAIT:
-                        r = build_sock_ev_epoll_pwait(
-                            (const SockEvEpollPwait *)ev);
-                        break;
+                        r = build_sock_ev_epoll_pwait((const SockEvEpollPwait *)ev); break;
                 case SOCK_EV_FDOPEN:
-                        r = build_sock_ev_fdopen((const SockEvFdopen *)ev);
-                        break;
+                        r = build_sock_ev_fdopen((const SockEvFdopen *)ev); break;
                 case SOCK_EV_TCP_INFO:
-                        r = build_sock_ev_tcp_info((const SockEvTcpInfo *)ev);
-                        break;
+                        r = build_sock_ev_tcp_info((const SockEvTcpInfo *)ev); break;
                 case SOCK_EV_SPLICE:
-                        r = build_sock_ev_splice((const SockEvSplice *)ev);
-                        break;
+                        r = build_sock_ev_splice((const SockEvSplice *)ev); break;
                 case SOCK_EV_NETLINK:
-                r = build_sock_ev_netlink((const SockEvNetlink *)ev);
-                break;
+                        r = build_sock_ev_netlink((const SockEvNetlink *)ev); break;
         }
         return r;
 }
 
-/* Public functions */
+/* Public function */
 
 char *alloc_sock_ev_json(const SockEvent *ev) {
         json_t *json_ev = build_sock_ev(ev);
