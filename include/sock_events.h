@@ -1,7 +1,7 @@
 #ifndef SOCK_EVENTS_H
 #define SOCK_EVENTS_H
 
-#include <netinet/tcp.h>
+#include <linux/tcp.h>
 #include <pcap/pcap.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -80,6 +80,7 @@ typedef struct {
         int err;
         long id;
         pid_t thread_id;
+        unsigned int repeat_count; 
 } SockEvent;
 
 typedef struct {
@@ -428,10 +429,12 @@ typedef struct {
         int fd;
         SockInfo sock_info;
         long events_count;
-        unsigned long bytes_sent;      // Total bytes sent.
-        unsigned long bytes_received;  // Total bytes received.
-        long last_info_dump_micros;  // Time of last info dump in microseconds.
-        long last_info_dump_bytes;   // Total bytes (sent+recv) at last dump.
+        long pending_events; // Compteur pour le dump
+        FILE *json_fp;       // Descripteur de fichier persistant
+        unsigned long bytes_sent;
+        unsigned long bytes_received;
+        long last_info_dump_micros;
+        long last_info_dump_bytes;
         bool bound;
         struct sockaddr_storage bound_addr;
         int rtt;

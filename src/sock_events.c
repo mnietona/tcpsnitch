@@ -117,6 +117,7 @@ static SockEvent *alloc_event(SockEventType type, int return_value, int err,
         ev->success = success;
         ev->err = err;
         ev->id = id;
+        ev->repeat_count = 1; 
 #ifdef SYS_gettid
         ev->thread_id = syscall(SYS_gettid);
 #else
@@ -124,6 +125,33 @@ static SockEvent *alloc_event(SockEventType type, int return_value, int err,
 #endif
         return ev;
 }
+
+
+static bool is_spammy_event(SockEvent *ev) {
+        // Poll qui ne retourne rien (timeout)
+        if (ev->type == SOCK_EV_POLL && ev->return_value == 0) return true;
+        // Recv ou Send qui bloquent (EAGAIN / EWOULDBLOCK)
+        if ((ev->type == SOCK_EV_RECV || ev->type == SOCK_EV_SEND) && 
+            ev->return_value == -1 && (ev->err == EAGAIN || ev->err == EWOULDBLOCK)) return true;
+        return false;
+}
+
+static bool try_agglomerate(Socket *sock, SockEvent *ev) {
+        if (!sock->tail) return false;
+        SockEvent *last = sock->tail->data;
+
+        // Si l'événement précédent est identique et qu'il fait partie des événements considérés comme "spammants"
+        if (last->type == ev->type &&
+            last->return_value == ev->return_value &&
+            last->err == ev->err &&
+            is_spammy_event(ev)) {
+                last->repeat_count++;
+                last->timestamp_usec = ev->timestamp_usec; // Met à jour avec l'heure de la dernière occurrence
+                return true;
+        }
+        return false;
+}
+
 
 static void free_event(SockEvent *ev) {
         switch (ev->type) {
@@ -173,6 +201,12 @@ static void free_events_list(SockEventNode *head) {
 #define MAX_EVENTS_BEFORE_FLUSH 2000 // Sécurité mémoire
 
 static void push_event(Socket *sock, SockEvent *ev) {
+
+        if (try_agglomerate(sock, ev)) {
+                free_event(ev); // Détruit le duplicata non nécessaire
+                return;
+        }
+
         SockEventNode *node = (SockEventNode *)my_malloc(sizeof(SockEventNode));
         node->data = ev;
         node->next = NULL;
@@ -184,14 +218,12 @@ static void push_event(Socket *sock, SockEvent *ev) {
 
         sock->tail = node;
         sock->events_count++;
+        sock->pending_events++; 
 
-
-        if (sock->events_count >= MAX_EVENTS_BEFORE_FLUSH) {
-
-             dump_events_as_json(sock);
-
+        // Sécurité en cas de surcharge (Fall-back synchrone forcé si le thread est trop lent)
+        if (sock->pending_events >= MAX_EVENTS_BEFORE_FLUSH) {
+             dump_events_as_json(sock); 
         }
-        return;
 }
 
 #define SOCK_TYPE_MASK 0b1111
@@ -348,42 +380,44 @@ error_out:
 }
 
 static void dump_events_as_json(Socket *sock) {
-        if (conf_opt_d == NULL) goto error1;
+        if (conf_opt_d == NULL || sock->head == NULL) return;
         LOG_FUNC_INFO;
-        char *json_str, *json_file_str;
 
-        if (!(json_file_str = alloc_json_path_str(sock))) goto error_out;
-        FILE *fp = fopen(json_file_str, "a");
-        free(json_file_str);
-        if (!fp) goto error_out;
+        SockEventNode *list_to_dump = sock->head;
+        sock->head = NULL;
+        sock->tail = NULL;
+        sock->pending_events = 0; 
 
-        SockEventNode *tmp, *cur = sock->head;
+        if (!sock->json_fp) {
+                char *json_file_str = alloc_json_path_str(sock);
+                if (json_file_str) {
+                        sock->json_fp = fopen(json_file_str, "a");
+                        free(json_file_str);
+                }
+        }
+
+        if (!sock->json_fp) {
+                LOG_FUNC_ERROR;
+                // En cas d'erreur de disque, on doit quand même free la mémoire
+                SockEventNode *tmp, *cur = list_to_dump;
+                while(cur) { tmp = cur; cur = cur->next; free_event(tmp->data); free(tmp); }
+                return;
+        }
+
+        SockEventNode *tmp, *cur = list_to_dump;
         while (cur != NULL) {
-                SockEvent *ev = cur->data;
-                if (!(json_str = alloc_sock_ev_json(ev))) goto error_out;
-
-                my_fputs(json_str, fp);
-                my_fputs("\n", fp);
-
-                free(json_str);
+                char *json_str = alloc_sock_ev_json(cur->data);
+                if (json_str) {
+                        my_fputs(json_str, sock->json_fp);
+                        my_fputs("\n", sock->json_fp);
+                        // fflush(sock->json_fp); 
+                        free(json_str);
+                }
                 free_event(cur->data);
                 tmp = cur;
                 cur = cur->next;
                 free(tmp);
         }
-        sock->head = NULL;
-        sock->tail = NULL;
-
-        if (fclose(fp) == EOF) goto error2;
-        return;
-error2:
-        LOG(ERROR, "fclose() failed. %s.", strerror(errno));
-        goto error_out;
-error1:
-        LOG(ERROR, "OPT_D is NULL.");
-error_out:
-        LOG_FUNC_ERROR;
-        return;
 }
 
 static void tcp_dump_tcp_info(int fd) {
@@ -478,7 +512,14 @@ void free_and_dump_socket(int fd) {
         Socket *sock = ra_remove_elem(fd);
         if (sock->capture_switch != NULL)
                 stop_capture(sock->capture_switch, sock->rtt * 2);
+        
         dump_events_as_json(sock);
+
+        if (sock->json_fp) {
+                fclose(sock->json_fp);
+                sock->json_fp = NULL;
+        }
+
         free_socket(sock);
 }
 
@@ -1185,8 +1226,15 @@ void dump_all_sock_events(void) {
         LOG_FUNC_INFO;
         for (long i = 0; i < ra_get_size(); i++) {
                 if (!ra_is_present(i)) continue;
+                
                 Socket *socket = ra_get_and_lock_elem(i);
-                if (socket) dump_events_as_json(socket);
+                if (!socket || socket->head == NULL) {
+                        if (socket) ra_unlock_elem(i);
+                        continue;
+                }
+
+                dump_events_as_json(socket);
+                
                 ra_unlock_elem(i);
         }
 }
