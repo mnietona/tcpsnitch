@@ -1,4 +1,3 @@
-
 #include <dirent.h>
 #include <dlfcn.h>
 #include <errno.h>
@@ -21,12 +20,8 @@
 #include "logger.h"
 #include "string_builders.h"
 
-
-
 typedef int (*orig_getsockopt_type)(int sockfd, int level, int optname,
                                     void *optval, socklen_t *optlen);
-
-// add static to avoid multiple definition error during linking
 static orig_getsockopt_type orig_getsockopt;
 
 int my_getsockopt(int sockfd, int level, int optname, void *optval,
@@ -44,7 +39,6 @@ error:
 }
 
 typedef FILE *(*orig_fdopen_type)(int fd, const char *mode);
-
 static orig_fdopen_type orig_fdopen;
 
 FILE *my_fdopen(int fd, const char *mode) {
@@ -58,7 +52,6 @@ typedef int (*ioctl_type)(int fd, int request, ...);
 #else
 typedef int (*ioctl_type)(int fd, unsigned long int request, ...);
 #endif
-
 static ioctl_type orig_ioctl;
 
 #ifdef __ANDROID__
@@ -102,19 +95,17 @@ error:
         return false;
 }
 
+
 bool is_inet_socket(int fd) {
         if (!is_socket(fd)) return false;
+        
         int optval;
         socklen_t optlen = sizeof(optval);
+        
         if (my_getsockopt(fd, SOL_SOCKET, SO_DOMAIN, &optval, &optlen))
                 goto error;
+                
         return (optval == AF_INET || optval == AF_INET6 ||
-                /* pcap_open_live() will open an AF_PACKET socket. We will thus
-                 * run into a deadlock if we do trace AF_PACKET sockets while
-                 * sniffing packets. Also, we actually capture our own socket
-                 * activity. We should find a way not to track libpcap sockets.
-                 * Until we find a proper solution to do that we simply do not
-                 * trace AF_PACKET sockets when capture pcap traces. */
                 (conf_opt_c ? false : (optval == AF_PACKET)));
 error:
         LOG(ERROR, "Assume socket is not a INET socket.");
@@ -169,7 +160,7 @@ int fill_tcp_info(int fd, struct tcp_info *info) {
         if (my_getsockopt(fd, SOL_TCP, TCP_INFO, (void *)info, &n)) goto error;
         return 0;
 error:
-        LOG(ERROR, "getsockopt() failed. %s.", strerror(errno));
+        LOG(ERROR, "getsockopt(TCP_INFO) failed. %s.", strerror(errno));
         LOG_FUNC_ERROR;
         return -1;
 }
@@ -186,9 +177,7 @@ error:
 unsigned long get_time_micros(void) {
         struct timeval tv;
         if (fill_timeval(&tv)) goto error;
-        unsigned long time_micros;
-        time_micros = tv.tv_sec * (unsigned long)1000000 + tv.tv_usec;
-        return time_micros;
+        return tv.tv_sec * (unsigned long)1000000 + tv.tv_usec;
 error:
         LOG_FUNC_ERROR;
         return 0;
@@ -241,7 +230,11 @@ long get_long_opt_or_defaultval(const char *opt, long def_val) {
 #else
         long val = get_env_as_long(opt);
 #endif
-        if (val < 0) LOG(WARN, "%s incorrect. Defaults to %lu.", opt, def_val);
+        if (val < 0) {
+                LOG(WARN, "%s non défini ou invalide. Valeur par défaut : %ld.",
+                    opt, def_val);
+                return def_val;   /* FIX : était "return val" */
+        }
         return val;
 }
 
@@ -293,7 +286,8 @@ bool mutex_init(pthread_mutex_t *mutex) {
         pthread_mutexattr_t attr;
         int rc;
         if ((rc = pthread_mutexattr_init(&attr)) ||
-            (rc = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK)) ||
+            (rc = pthread_mutexattr_settype(&attr,
+                                            PTHREAD_MUTEX_ERRORCHECK)) ||
             (rc = pthread_mutex_init(mutex, &attr)) ||
             (rc = pthread_mutexattr_destroy(&attr)))
                 goto error;

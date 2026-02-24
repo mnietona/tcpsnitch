@@ -9,7 +9,12 @@
 #include <linux/sockios.h>
 #include <linux/wireless.h>
 #include <net/ethernet.h>
-#include <netinet/tcp.h>
+#include <linux/tcp.h>
+
+#ifndef SOL_TCP
+#define SOL_TCP 6
+#endif
+
 #include <netpacket/packet.h>
 #include <stdbool.h>
 #include <sys/socket.h>
