@@ -49,3 +49,4 @@ meta/
 firefox/
 *.txt
 run.sh
+ff_profile/
