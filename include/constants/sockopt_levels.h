@@ -1,5 +1,10 @@
 #include "asm-generic/socket.h"
-#include "netinet/tcp.h"
+#include <linux/tcp.h>
+
+#ifndef SOL_TCP
+#define SOL_TCP 6
+#endif
+
 #ifndef __ANDROID__
 #include "netinet/udp.h"
 #endif

@@ -12,18 +12,20 @@
 #endif
 #include "lib.h"
 #include "logger.h"
+#include "netlink_spy.h"
 #include "sock_events.h"
 #include "string_builders.h"
-#include "netlink_spy.h"
 
-long conf_opt_b;
-long conf_opt_c;
+
+long  conf_opt_b;
+long  conf_opt_c;
 char *conf_opt_d;
-long conf_opt_f;
-long conf_opt_l;
-long conf_opt_u;
-long conf_opt_t;
-long conf_opt_v;
+long  conf_opt_f;
+long  conf_opt_l;
+long  conf_opt_p;   
+long  conf_opt_u;
+long  conf_opt_t;
+long  conf_opt_v;
 
 char *logs_dir_path;
 
@@ -41,18 +43,18 @@ static pthread_mutex_t init_mutex = PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP;
 #endif
 
 static char *prepare_output_dir(const char *path) {
-    struct stat st = {0};
-    if (stat(path, &st) == -1) {
-        if (mkdir(path, 0777) != 0 && errno != EEXIST) {
-            LOG(ERROR, "mkdir() failed for %s. %s.", path, strerror(errno));
-            return NULL;
+        struct stat st = {0};
+        if (stat(path, &st) == -1) {
+                if (mkdir(path, 0777) != 0 && errno != EEXIST) {
+                        LOG(ERROR, "mkdir() failed for %s. %s.", path,
+                            strerror(errno));
+                        return NULL;
+                }
+        } else if (!S_ISDIR(st.st_mode)) {
+                LOG(ERROR, "Path %s exists but is not a directory.", path);
+                return NULL;
         }
-    } else if (!S_ISDIR(st.st_mode)) {
-        LOG(ERROR, "Path %s exists but is not a directory.", path);
-        return NULL;
-    }
-    
-    return strdup(path);
+        return strdup(path);
 }
 
 static void tcpsnitch_free(void) {
@@ -74,14 +76,14 @@ static void open_std_streams(void) {
 
 static void get_options(void) {
         conf_opt_b = get_long_opt_or_defaultval(OPT_B, 4096);
+        conf_opt_p = 0; 
 #ifdef __ANDROID__
         conf_opt_d = alloc_android_opt_d();
         conf_opt_u = get_long_opt_or_defaultval(OPT_U, 0);
 #else
         conf_opt_c = get_long_opt_or_defaultval(OPT_C, 1);
         conf_opt_d = alloc_str_opt(OPT_D);
-        
-        conf_opt_u = get_long_opt_or_defaultval(OPT_U, 100000); 
+        conf_opt_u = get_long_opt_or_defaultval(OPT_U, 100000);
 #endif
         conf_opt_f = get_long_opt_or_defaultval(OPT_F, WARN);
         conf_opt_l = get_long_opt_or_defaultval(OPT_L, WARN);
@@ -94,7 +96,7 @@ static void log_options(void) {
 #ifndef __ANDROID__
         LOG(INFO, "Option c: %lu.", conf_opt_c);
 #endif
-        LOG(INFO, "Option d: %s", conf_opt_d);
+        LOG(INFO, "Option d: %s", conf_opt_d ? conf_opt_d : "(null)");
         LOG(INFO, "Option f: %lu.", conf_opt_f);
         LOG(INFO, "Option l: %lu.", conf_opt_l);
         LOG(INFO, "Option t: %lu.", conf_opt_t);
@@ -119,7 +121,7 @@ static void *json_dumper_thread(void *arg) {
         LOG_FUNC_INFO;
 
         struct timespec time;
-        time.tv_sec = conf_opt_t / 1000;
+        time.tv_sec  = conf_opt_t / 1000;
         time.tv_nsec = (conf_opt_t % 1000) * 1000 * 1000;
 
         while (true) {
@@ -129,13 +131,12 @@ static void *json_dumper_thread(void *arg) {
         return NULL;
 }
 
-void start_json_dumper_thread(void) {
+static void start_json_dumper_thread(void) {
         pthread_t thread;
         my_pthread_create(&thread, NULL, json_dumper_thread, NULL);
 }
 
 /* Public functions */
-
 void reset_tcpsnitch(void) {
         if (!initialized) return;
         tcpsnitch_free();
@@ -153,39 +154,38 @@ void init_tcpsnitch(void) {
         open_std_streams();
 #endif
         get_options();
+
         
-        // SECURITY 
         if (!conf_opt_d) {
-             #ifdef __ANDROID__
-                 // c'est grave mais s'occup apres
-             #else
-                 conf_opt_d = strdup(".");
-             #endif
+#ifdef __ANDROID__
+                LOG(ERROR, "conf_opt_d is NULL on Android, aborting.");
+                goto exit_fail;
+#else
+                conf_opt_d = strdup(".");
+#endif
         }
 
-        if (conf_opt_d) {
-             logs_dir_path = prepare_output_dir(conf_opt_d);
-             if (!logs_dir_path) {
-                  LOG(ERROR, "Failed to prepare output directory.");
-                  goto exit1;
-             }
-             init_logs();
-        } else {
-             goto exit1; 
+        logs_dir_path = prepare_output_dir(conf_opt_d);
+        if (!logs_dir_path) {
+                LOG(ERROR, "Failed to prepare output directory '%s'.", conf_opt_d);
+                goto exit_fail;
         }
 
+        init_logs();
         log_options();
+
         
         start_netlink_spy_thread();
 
         if (conf_opt_t) start_json_dumper_thread();
+
         goto exit;
-exit1:
-        LOG(ERROR, "TCPSnitch failed to initialize storage. Aborting capture.");
+
+exit_fail:
+        LOG(ERROR, "TCPSnitch init failed — capture disabled.");
 exit:
         initialized = true;
         mutex_unlock(&init_mutex);
-        return;
 }
 
 __attribute__((destructor)) static void cleanup(void) {
