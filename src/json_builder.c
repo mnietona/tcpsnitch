@@ -714,8 +714,9 @@ static json_t *build_sock_ev_fcntl(const SockEvFcntl *ev) {
                         add(d, "arg", json_integer(ev->arg));
                         break;
         }
-        if (ev->cmd == F_DUPFD || ev->cmd == F_DUPFD_CLOEXEC)
+        if (ev->cmd == F_DUPFD || ev->cmd == F_DUPFD_CLOEXEC || ev->sock_info.filled) {
                 add(json_details, "sock_info", build_sock_info(&ev->sock_info));
+        }
         return json_ev;
 }
 

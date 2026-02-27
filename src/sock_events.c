@@ -1126,12 +1126,12 @@ void sock_ev_fcntl(int fd, int ret, int err, int cmd, ...) {
                 case F_OFD_SETLKW:
                 case F_OFD_GETLK:
 #endif
-                        /* Arg: struct flock * */
+                        // Arg: struct flock *
                         break;
 
                 case F_GETOWN_EX:
                 case F_SETOWN_EX:
-                        /* Arg: struct f_owner_ex * */
+                        // Arg: struct f_owner_ex *
                         break;
 
                 default:
