@@ -1088,17 +1088,32 @@ void sock_ev_fcntl(int fd, int ret, int err, int cmd, ...) {
                 case F_SETSIG:
                 case F_SETLEASE:
                 case F_NOTIFY:
-                case F_SETPIPE_SZ:
+                case F_SETPIPE_SZ: {
                         // Arg: int
-                        {
-                                va_list argp;
-                                int arg;
-                                va_start(argp, cmd);
-                                arg = va_arg(argp, int);
-                                va_end(argp);
-                                ev->arg = arg;
+                        va_list argp;
+                        int arg;
+                        va_start(argp, cmd);
+                        arg = va_arg(argp, int);
+                        va_end(argp);
+                        ev->arg = arg;
+
+                        if (cmd == F_SETFL && ret != -1) {
+                                bool is_nonblock = (arg & O_NONBLOCK) != 0;
+                                /* Mise à jour de l'événement fcntl */
+                                ev->sock_info.sock_nonblock  = is_nonblock;
+                                ev->sock_info.filled         = true;
+                                /* Mise à jour persistante du socket lui-même */
+                                sock->sock_info.sock_nonblock = is_nonblock;
+
+                                LOG(INFO,
+                                    "fcntl(F_SETFL) fd=%d → O_NONBLOCK=%s "
+                                    "(sock_info mis à jour)",
+                                    fd,
+                                    is_nonblock ? "true" : "false");
                         }
                         break;
+                }
+
                 case F_SETLK:
                 case F_SETLKW:
                 case F_GETLK:
@@ -1111,12 +1126,14 @@ void sock_ev_fcntl(int fd, int ret, int err, int cmd, ...) {
                 case F_OFD_SETLKW:
                 case F_OFD_GETLK:
 #endif
-                        // Arg: struct flock *
+                        /* Arg: struct flock * */
                         break;
+
                 case F_GETOWN_EX:
                 case F_SETOWN_EX:
-                        // Arg: struct f_owner_ex *
+                        /* Arg: struct f_owner_ex * */
                         break;
+
                 default:
                         LOG(WARN, "cmd unknown: %d - fcntl dropped", cmd);
         }
@@ -1301,4 +1318,12 @@ void sock_ev_netlink(int fd, int msg_type, int if_index, int family, const char 
     dump_events_as_json(sock);
     
     ra_unlock_elem(fd);
+}
+
+uint64_t sock_get_session_id(int fd) {
+    Socket *sock = ra_get_and_lock_elem(fd);
+    if (!sock) return (uint64_t)fd;
+    uint64_t id = (uint64_t)sock->id;
+    ra_unlock_elem(fd);
+    return id;
 }
