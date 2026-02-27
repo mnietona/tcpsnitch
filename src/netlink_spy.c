@@ -24,8 +24,6 @@ void parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len) {
     }
 }
 
-/* ── Ouverture du socket Netlink ───────────────────────────────────────────── */
-
 static int open_netlink_socket(void) {
     int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
     if (sock < 0) {

@@ -1,8 +1,6 @@
 /**
  * @file libc_overrides.c
- * @author Gregory Vander Schueren
  * @brief LD_PRELOAD overrides for tracking socket lifecycle and establishing eBPF correlation.
- * @date October, 2016 (Updated: 2026 - eBPF FD lifecycle hooks)
  */
 
 #include "lib.h"
@@ -54,19 +52,19 @@
                 return ret;                                                \
         }
 
-#define override_1arg(FUNCTION, RETURN_TYPE)                               \
-        typedef RETURN_TYPE (*FUNCTION##_type)(int fd);                    \
-        FUNCTION##_type orig_##FUNCTION;                                   \
+#define override_1arg(FUNCTION, RETURN_TYPE)                            \
+        typedef RETURN_TYPE (*FUNCTION##_type)(int fd);                   \
+        FUNCTION##_type orig_##FUNCTION;                                 \
                                                                            \
-        EXPORT RETURN_TYPE FUNCTION(int fd) {                              \
-                if (!orig_##FUNCTION)                                      \
-                        orig_##FUNCTION =                                  \
+        EXPORT RETURN_TYPE FUNCTION(int fd) {                             \
+                if (!orig_##FUNCTION)                                     \
+                        orig_##FUNCTION =                                 \
                             (FUNCTION##_type)dlsym(RTLD_NEXT, #FUNCTION);  \
-                RETURN_TYPE ret = orig_##FUNCTION(fd);                     \
-                int err = errno;                                           \
+                RETURN_TYPE ret = orig_##FUNCTION(fd);                    \
+                int err = errno;                                          \
                 if (is_inet_socket(fd)) sock_ev_##FUNCTION(fd, ret, err);  \
-                errno = err;                                               \
-                return ret;                                                \
+                errno = err;                                              \
+                return ret;                                               \
         }
 
 /**
