@@ -23,9 +23,10 @@ readonly CWD=$(pwd)
 # Option default values
 OPT_A=0
 OPT_B=4096   
-OPT_C=1     
-OPT_D=""     
-OPT_F=2
+OPT_C=0  
+OPT_D=""
+OPT_E=0 
+OPT_F=2   
 OPT_L=1
 OPT_P=0
 OPT_T=1000
@@ -46,7 +47,7 @@ META_OPTIONS_VALS=($OPT_B $OPT_F $OPT_U)
 usage() {
     local _head="Usage: ${NAME}"
     local _skip=$(printf "%0.s " $(seq 1 ${#_head}))
-    echo "${_head} [-achpv] [ -b <bytes> ] [ -d <dir>] [ -f <lvl> ]"
+    echo "${_head} [-acehpv] [ -b <bytes> ] [ -d <dir>] [ -f <lvl> ]"
     echo "${_skip} [ -k <pkg> ] [ -l <lvl> ] [ -t <msec> ]"
     echo "${_skip} [ -u <usec> ] [ --version ] <app> [<args>]"
     echo ""
@@ -54,8 +55,9 @@ usage() {
     echo "<args>      args to <app>."
     echo "-a          instrument & launch app on connected android device."
     echo "-b <bytes>  dump tcp_info every <bytes> (def 4096)."
-    echo "-c          capture is ON by default. (This flag is now a no-op)."
+    echo "-c          is used for capturing pcap traces of the sockets. See section \"Packet capture\" for more info."
     echo "-d <dir>    Base output directory (defaults to ./tcpsnitch_output)."
+    echo "-e          activate eBPF capture (requires root/sudo on Linux)."
     echo "-f <lvl>    verbosity of logs to file (0 to 5, defaults to 2)."
     echo "-h          show this help text."
     echo "-k <pkg>    kill instrumented android <pkg> and pull traces."
@@ -68,7 +70,7 @@ usage() {
 }
 
 parse_options() {
-    while getopts ":achpvb:d:f:k:l:t:u:-:" opt; do
+    while getopts ":acehpvb:d:f:k:l:t:u:-:" opt; do
         case "${opt}" in
             -) 
                 case "${OPTARG}" in
@@ -87,6 +89,7 @@ parse_options() {
                 fi
                 OPT_D=$(readlink -f "$OPTARG")
                 ;;
+            e) OPT_E=1 ;; 
             f) assert_int "${OPTARG}" "invalid -f argument" ; OPT_F=${OPTARG} ;;
             h) usage ; exit 0 ;;
             k) tcpsnitch_android_teardown $@ ; exit 0 ;;
@@ -282,6 +285,7 @@ tcpsnitch_linux() {
         TCPSNITCH_OPT_B=$OPT_B \
         TCPSNITCH_OPT_C=$OPT_C \
         TCPSNITCH_OPT_D=$RUN_DIR \
+        TCPSNITCH_OPT_E=$OPT_E \
         TCPSNITCH_OPT_F=$OPT_F \
         TCPSNITCH_OPT_L=$OPT_L \
         TCPSNITCH_OPT_T=$OPT_T \
@@ -292,6 +296,7 @@ tcpsnitch_linux() {
         TCPSNITCH_OPT_B=$OPT_B \
         TCPSNITCH_OPT_C=$OPT_C \
         TCPSNITCH_OPT_D=$RUN_DIR \
+        TCPSNITCH_OPT_E=$OPT_E \
         TCPSNITCH_OPT_F=$OPT_F \
         TCPSNITCH_OPT_L=$OPT_L \
         TCPSNITCH_OPT_T=$OPT_T \
@@ -324,8 +329,6 @@ tcpsnitch_android() {
     adb shell su -c setenforce 0
 
     # Create logs dir (Android side)
-    # NOTE: Sur Android on garde le path original /data/data/... 
-    # Le code C modifié écrira directement dedans sans ajouter _000, ce qui est très bien.
     declare LOGS_DIR="/data/data/${PACKAGE}/${NAME}"
     adb shell su -c rm -rf "$LOGS_DIR"
     adb shell su -c mkdir -m 777 -p "$LOGS_DIR"
@@ -359,6 +362,7 @@ tcpsnitch_android() {
     adb shell setprop wrap."${PACKAGE:0:26}" LD_PRELOAD="${LIBPATH}/${ARM_LIB}"
     adb shell setprop "${PROP_PREFIX}.opt_b" "$OPT_B"
     adb shell setprop "${PROP_PREFIX}.opt_d" "$LOGS_DIR"
+    adb shell setprop "${PROP_PREFIX}.opt_e" "$OPT_E"    
     adb shell setprop "${PROP_PREFIX}.opt_f" "$OPT_F"
     adb shell setprop "${PROP_PREFIX}.opt_l" "$OPT_L"
     adb shell setprop "${PROP_PREFIX}.opt_t" "$OPT_T"

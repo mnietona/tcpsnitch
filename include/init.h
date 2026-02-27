@@ -11,6 +11,7 @@
 #define OPT_B "be.ucl.tcpsnitch.opt_b"
 #define OPT_C "be.ucl.tcpsnitch.opt_c"
 #define OPT_D "be.ucl.tcpsnitch.opt_d"
+#define OPT_E "be.ucl.tcpsnitch.opt_e"
 #define OPT_F "be.ucl.tcpsnitch.opt_f"
 #define OPT_L "be.ucl.tcpsnitch.opt_l"
 #define OPT_T "be.ucl.tcpsnitch.opt_t"
@@ -20,6 +21,7 @@
 #define OPT_B "TCPSNITCH_OPT_B"
 #define OPT_C "TCPSNITCH_OPT_C"
 #define OPT_D "TCPSNITCH_OPT_D"
+#define OPT_E "TCPSNITCH_OPT_E"
 #define OPT_F "TCPSNITCH_OPT_F"
 #define OPT_L "TCPSNITCH_OPT_L"
 #define OPT_T "TCPSNITCH_OPT_T"
@@ -30,6 +32,7 @@
 extern long conf_opt_b;
 extern long conf_opt_c;
 extern char *conf_opt_d;
+extern long conf_opt_e;
 extern long conf_opt_f;
 extern long conf_opt_l;
 extern long conf_opt_p;
