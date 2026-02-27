@@ -1,4 +1,5 @@
 static const IntStrPair SOCKET_TYPES[] = {
+    {0, "0"},
 #ifdef SOCK_STREAM
     ADD(SOCK_STREAM),
 #endif

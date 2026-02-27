@@ -1,4 +1,5 @@
 static const IntStrPair SOCKET_DOMAINS[] = {
+    {0, "AF_UNSPEC"},
 #ifdef AF_UNIX
     ADD(AF_UNIX),
 #endif
