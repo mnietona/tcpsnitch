@@ -516,6 +516,8 @@ void sock_ev_read(int fd, int ret, int err, void *buf, size_t bytes);
 
 void sock_ev_close(int fd, int ret, int err);
 
+uint64_t sock_get_session_id(int fd);
+
 void sock_ev_dup(int fd, int ret, int err);
 
 void sock_ev_dup2(int fd, int ret, int err, int newfd);
