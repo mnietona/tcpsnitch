@@ -33,10 +33,9 @@ env/
 *.a
 
 # --- Données & Traces (Ne jamais versionner les résultats de tests !) ---
-dataset_rich/
-mes_traces/
-test_netlink/
+tcpsnitch_output/
 *.json
+*.jsonl
 *.pcap
 logs.txt
 meta/
@@ -48,5 +47,7 @@ meta/
 *.qlog
 firefox/
 *.txt
-run.sh
 ff_profile/
+*.png
+*.csv
+
