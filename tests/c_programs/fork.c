@@ -1,42 +1,27 @@
-#include <arpa/inet.h>
-#include <errno.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/epoll.h>
-#include <sys/fcntl.h>
-#include <sys/ioctl.h>
-#include <sys/sendfile.h>
-#include <sys/select.h>
 #include <sys/socket.h>
-#include <sys/uio.h>
-#include <sys/unistd.h>
 #include <sys/wait.h>
+#include <netinet/in.h>
 #include <unistd.h>
+#include <stdlib.h>
 
-int main(void) {
-  int sock;
-  if ((sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
-    fprintf(stderr, "socket() failed: %s\n.", strerror(errno));
-    return(EXIT_FAILURE);
-  }
+int main() {
+    pid_t pid = fork();
+    
+    if (pid < 0) exit(1);
 
-  pid_t pid;
-  pid = fork();
-  if (pid < 0) return (EXIT_FAILURE);
-  if (pid == 0) { // Child
-    int sock;
-  if ((sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
-    fprintf(stderr, "socket() failed: %s\n.", strerror(errno));
-    return(EXIT_FAILURE);
-  }
-
-  } else { // Parent
-    int status;
-    waitpid(pid, &status, 0);
-  }
-          
-  return(EXIT_SUCCESS);
+    if (pid == 0) {
+        // Enfant
+        usleep(100000); 
+        int s_child = socket(AF_INET, SOCK_STREAM, 0);
+        if (s_child >= 0) close(s_child);
+        usleep(500000); 
+        _exit(0); 
+    } else {
+        // Parent
+        int s_parent = socket(AF_INET, SOCK_STREAM, 0);
+        if (s_parent >= 0) close(s_parent);
+        wait(NULL); 
+        usleep(500000); 
+        exit(0);
+    }
 }
