@@ -9,6 +9,7 @@ CONFIG=.config.in
 SRC_DIR=src
 INC_DIR=include
 BIN_DIR=bin
+BPF_SRC_DIR=src/bpf
 
 # ./bin names
 EXECUTABLE=tcpsnitch
@@ -29,17 +30,37 @@ DEPS_PATH=$(BIN_PATH)/tcpsnitch_deps
 
 # Compiler & linker flags
 CC=gcc
-# Ajout de -I$(INC_DIR) pour trouver les .h
 C_FLAGS=-g -fPIC --shared -Wl,-Bsymbolic -std=gnu11 -fvisibility=hidden -D_GNU_SOURCE -I$(INC_DIR)
-# Mode strict (-Werror) conservé
-W_FLAGS=-Wall -Wextra -Werror -Wfloat-equal -Wshadow -Wpointer-arith \
-    -Wstrict-prototypes -Wwrite-strings -Waggregate-return -Wcast-qual \
-    -Wunreachable-code
 
-# Dependencies
-DEBIAN_BASED_DEPS=-lpthread -ldl -ljansson -l:libpcap.so.0.8
-RPM_BASED_DEPS=-lpthread -ldl -l:libjansson.so.4 -lpcap
-OTHER_DEPS=-lpthread -ldl -lpcap -ljansson
+# -Wno-unused-function : le squelette généré par bpftool contient des fonctions
+# statiques inline qui peuvent ne pas toutes être utilisées dans ebpf_collector.c
+W_FLAGS=-Wall -Wextra -Werror -Wfloat-equal -Wshadow -Wpointer-arith \
+        -Wstrict-prototypes -Wwrite-strings -Waggregate-return -Wcast-qual \
+        -Wunreachable-code -Wno-unused-function
+
+# BPF toolchain
+BPF_CLANG ?= clang
+BPFTOOL   ?= bpftool
+BPF_ARCH  ?= x86
+
+# Flags pour le programme côté noyau :
+#   -target bpf  : cross-compilation pour la machine virtuelle BPF
+#   -g           : émet les infos BTF nécessaires pour CO-RE (Compile Once - Run Everywhere)
+#   -O2          : le vérificateur BPF rejette le code non optimisé
+BPF_CFLAGS = -g -O2 -target bpf \
+             -D__TARGET_ARCH_$(BPF_ARCH) \
+             -I$(INC_DIR) \
+             -I/usr/include/x86_64-linux-gnu
+
+# Artéfacts générés par la chaîne BPF
+BPF_OBJ  = $(BIN_DIR)/tcpsnitch.bpf.o
+BPF_SKEL = $(INC_DIR)/tcpsnitch.skel.h
+
+# Dependencies 
+# -lbpf ajouté sur tous les targets Linux (pas Android)
+DEBIAN_BASED_DEPS=-lpthread -ldl -ljansson -l:libpcap.so.0.8 -lbpf
+RPM_BASED_DEPS=-lpthread -ldl -l:libjansson.so.4 -lpcap -lbpf
+OTHER_DEPS=-lpthread -ldl -lpcap -ljansson -lbpf
 LINUX_DEPS=$(shell if rpm -q -f /usr/bin/rpm >/dev/null 2>&1; then echo $(RPM_BASED_DEPS); elif type apt-get >/dev/null 2>&1; then echo $(DEBIAN_BASED_DEPS); else echo $(OTHER_DEPS); fi)
 
 # Source files (Automatisé avec wildcard pour prendre tout ce qui est dans src et include)
@@ -53,7 +74,24 @@ endef
 
 default: linux
 
-linux: $(CONFIG) $(HEADERS) $(SOURCES)
+# Pipeline BPF 
+
+# Étape BPF 1 : compile le programme C eBPF en objet ELF BPF
+$(BPF_OBJ): $(BPF_SRC_DIR)/tcpsnitch.bpf.c $(INC_DIR)/bpf_shared_maps.h
+	@echo "[-] Compiling BPF kernel program..."
+	@mkdir -p $(BIN_DIR)
+	@mkdir -p $(BPF_SRC_DIR)
+	@$(BPF_CLANG) $(BPF_CFLAGS) -c $< -o $@
+
+# Étape BPF 2 : génère le header squelette libbpf depuis l'objet BPF
+#              Ce header est inclus par ebpf_collector.c pour charger/attacher
+#              les programmes et accéder aux maps via leurs file descriptors.
+$(BPF_SKEL): $(BPF_OBJ)
+	@echo "[-] Generating BPF skeleton header..."
+	@$(BPFTOOL) gen skeleton $< > $@
+
+# Main Linux target 
+linux: $(CONFIG) $(BPF_SKEL) $(HEADERS) $(SOURCES)
 	@echo "[-] Compiling Linux 64-bit lib version..."
 	@mkdir -p $(BIN_DIR)
 	@$(CC) $(C_FLAGS) $(W_FLAGS) $(L_FLAGS) -o ./$(BIN_DIR)/$(LIB_AMD64) $(SOURCES) $(LINUX_DEPS)
@@ -89,6 +127,7 @@ uninstall:
 clean:
 	@echo "[-] Cleaning build artifacts..."
 	@rm -f ./$(BIN_DIR)/*.so* ./$(BIN_DIR)/*hash ./$(BIN_DIR)/enable_i386 $(CONFIG)
+	@rm -f $(BPF_OBJ) $(BPF_SKEL)
 	@find . -type f -name '.DS_Store' -delete
 	@find . -type f -name '._*' -delete
 
