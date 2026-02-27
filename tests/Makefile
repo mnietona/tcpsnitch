@@ -29,3 +29,4 @@ clean:
 	@echo "[-] Cleaning..."
 	@sudo rm -rf $(OUTDIR)/
 	@rm -rf __pycache__
+	@sudo rm -rf /tmp/tcpsnitch_test_out
