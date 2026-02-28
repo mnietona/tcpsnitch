@@ -240,6 +240,7 @@ void init_tcpsnitch(void) {
         init_logs();
         log_options();
 
+        netlink_spy_init(logs_dir_path);
         start_netlink_spy_thread();
         start_ebpf_collector();
 

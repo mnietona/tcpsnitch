@@ -13,6 +13,7 @@
 #include "logger.h"
 #include <ifaddrs.h>
 #include <net/if.h>
+#include <time.h>
 
 // Utile pour parser les attributs Netlink
 void parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len) {
@@ -46,7 +47,54 @@ static int open_netlink_socket(void) {
     return sock;
 }
 
-static void dump_initial_interfaces(int netlink_sock_fd) {
+static FILE *g_netlink_fp = NULL;
+
+void netlink_spy_init(const char *output_dir) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/netlink_events.jsonl", output_dir);
+    g_netlink_fp = fopen(path, "w");
+    
+    if (!g_netlink_fp) {
+        LOG(ERROR, "netlink_spy: fopen(%s) failed: %s", path, strerror(errno));
+    } else {
+        LOG(INFO, "netlink_spy: output → %s", path);
+    }
+}
+
+static void write_netlink_jsonl(int msg_type, int if_index,
+                                int family, const char *ip)
+{
+    if (!g_netlink_fp) return;
+
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    uint64_t timestamp_usec = (uint64_t)ts.tv_sec * 1000000ULL
+                            + (uint64_t)ts.tv_nsec / 1000ULL;
+
+    const char *msg_str;
+    switch (msg_type) {
+        case RTM_NEWADDR:   msg_str = "NEW_ADDR";   break;
+        case RTM_DELADDR:   msg_str = "DEL_ADDR";   break;
+        case RTM_NEWROUTE:  msg_str = "NEW_ROUTE";  break;
+        case RTM_DELROUTE:  msg_str = "DEL_ROUTE";  break;
+        default:            msg_str = "UNKNOWN";    break;
+    }
+
+    const char *family_str = (family == AF_INET)  ? "IPv4" :
+                             (family == AF_INET6) ? "IPv6" : "UNKNOWN";
+
+    fprintf(g_netlink_fp,
+            "{\"type\":\"netlink\",\"timestamp_usec\":%lu,"
+            "\"details\":{\"msg_type\":\"%s\","
+            "\"if_index\":%d,\"family\":\"%s\",\"ip\":\"%s\"}}\n",
+            (unsigned long)timestamp_usec,
+            msg_str, if_index, family_str,
+            ip ? ip : "");
+
+    fflush(g_netlink_fp);
+}
+
+static void dump_initial_interfaces(void) {
     struct ifaddrs *ifaddr, *ifa;
     char host[INET6_ADDRSTRLEN];
 
@@ -73,7 +121,7 @@ static void dump_initial_interfaces(int netlink_sock_fd) {
 
         int if_index = if_nametoindex(ifa->ifa_name);
 
-        sock_ev_netlink(netlink_sock_fd, RTM_NEWADDR, if_index, family, host);
+        write_netlink_jsonl(RTM_NEWADDR, if_index, family, host);
 
         LOG(INFO, "Initial Interface: %s [%d] -> %s (msg_type=%d=RTM_NEWADDR)",
             ifa->ifa_name, if_index, host, RTM_NEWADDR);
@@ -94,8 +142,7 @@ static void *netlink_monitor_thread(void *arg) {
         return NULL;
     }
 
-    sock_ev_netlink_init(sock);
-    dump_initial_interfaces(sock);
+    dump_initial_interfaces();
 
     char buffer[8192];
     struct iovec iov = { buffer, sizeof(buffer) };
@@ -134,8 +181,7 @@ static void *netlink_monitor_thread(void *arg) {
                 LOG(INFO, "NETLINK EVENT: %s (iface=%d ip=%s msg_type=%d)",
                     action, ifa->ifa_index, ip_str, nh->nlmsg_type);
 
-                sock_ev_netlink(sock, nh->nlmsg_type,
-                                ifa->ifa_index, ifa->ifa_family, ip_str);
+                write_netlink_jsonl(nh->nlmsg_type, ifa->ifa_index, ifa->ifa_family, ip_str);
             }
 
            // Gestion des ROUTES
@@ -149,12 +195,10 @@ static void *netlink_monitor_thread(void *arg) {
                 char dst_str[INET6_ADDRSTRLEN] = {0};
 
                 if (tb[RTA_DST]) {
-                    
                     inet_ntop(rtm->rtm_family,
                               RTA_DATA(tb[RTA_DST]),
                               dst_str, sizeof(dst_str));
                 } else {
-                   
                     if (rtm->rtm_family == AF_INET)
                         strncpy(dst_str, "0.0.0.0", sizeof(dst_str));
                     else
@@ -176,10 +220,7 @@ static void *netlink_monitor_thread(void *arg) {
                     gw_str[0] ? gw_str : "(direct)",
                     rtm->rtm_family, nh->nlmsg_type);
 
-                sock_ev_netlink(sock, nh->nlmsg_type,
-                                0,              
-                                rtm->rtm_family,
-                                dst_str);
+                write_netlink_jsonl(nh->nlmsg_type, 0, rtm->rtm_family, dst_str);
             }
         }
     }
