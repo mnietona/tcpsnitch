@@ -1,3 +1,5 @@
+# Makefile — Benchmark 5 : Stress test
+
 .PHONY: all run analyze clean check-deps
 
 PYTHON := python3

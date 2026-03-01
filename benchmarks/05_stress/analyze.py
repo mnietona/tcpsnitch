@@ -1,14 +1,3 @@
-#!/usr/bin/env python3
-"""
-Benchmark 5 — Analyse robustesse sous charge
-============================================
-
-Lit output/stress_raw.csv et produit :
-  - output/stress_results.csv
-  - output/stress_graph.png     (4 panneaux)
-  - output/report.txt
-"""
-
 import csv
 import os
 import sys
