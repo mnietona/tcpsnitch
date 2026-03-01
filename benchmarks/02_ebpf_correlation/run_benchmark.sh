@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-RUNS=10
+RUNS=30
 OUTPUT_BASE="output"
 RAW_CSV="$OUTPUT_BASE/correlation_raw.csv"
 PYTHON_TEST="/tmp/bench_stress.py"

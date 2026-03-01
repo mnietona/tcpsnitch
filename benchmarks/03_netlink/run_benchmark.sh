@@ -1,9 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-RUNS_A=5
-RUNS_B=5
-RUNS_C=5
+RUNS_A=30
+RUNS_B=30
+RUNS_C=30
 EVENTS_PER_RUN_A=20
 EVENTS_PER_RUN_B=30
 EVENTS_PER_RUN_C=50
