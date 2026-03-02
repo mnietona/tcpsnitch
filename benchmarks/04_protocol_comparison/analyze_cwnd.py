@@ -116,7 +116,7 @@ def main():
         ax1.fill_between(t_tcp_ms, c_tcp_val, step="post", alpha=0.15, color='#3498db')
         
     ax1.axhline(y=10, color='#95a5a6', linestyle='--', linewidth=1.5, label="Initial cwnd (10)")
-    ax1.set_title("Évolution de la Fenêtre de Congestion TCP\n(Mesure par Polling User-Space 'tcp_info')", fontsize=14, fontweight='bold', pad=15)
+    ax1.set_title("Capture de la Fenêtre de Congestion TCP\n(Mesure User-Space 'tcp_info')", fontsize=14, fontweight='bold', pad=15)
     ax1.set_xlabel("Temps écoulé (millisecondes)", fontsize=12, fontweight='bold')
     ax1.set_ylabel("Taille de la fenêtre (Paquets MSS)", fontsize=12, fontweight='bold')
     ax1.grid(True, linestyle=':', alpha=0.7)
