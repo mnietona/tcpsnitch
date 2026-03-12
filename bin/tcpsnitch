@@ -13,7 +13,7 @@ readonly VERSION=0.1
 readonly VERSION_STR="${NAME} version ${VERSION}"
 readonly I386_LIB="lib${NAME}.so.${VERSION}-i386"
 readonly AMD64_LIB="lib${NAME}.so.${VERSION}-x86-64"
-readonly ARM_LIB="lib${NAME}.so.${VERSION}-arm"
+readonly ARM_LIB="lib${NAME}.so.${VERSION}-arm64"
 readonly SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 readonly PROP_PREFIX="be.ucl.${NAME}"
 readonly HIDDEN_ERRORS="wrong ELF class"
@@ -196,20 +196,22 @@ kill_android_package() {
 
 pull_trace_for_android_package() {
     declare tracesdir="/data/data/${PACKAGE}/${NAME}"
-    exists=$(adb shell "test -d ${tracesdir}; echo \$?" | tr -d '\r')
+    # On utilise su -c encapsulé pour tester l'existence
+    exists=$(adb shell su -c "'test -d ${tracesdir} && echo 0 || echo 1'" | tr -d '\r')
     if [[ "$exists" -eq "1" ]] ; then
         error "no traces for '${PACKAGE}'"
     fi
 
     info "Pulling trace from Android device..."
-    adb shell su -c chown -R shell "$tracesdir"
+    # On copie les traces dans un dossier public avant de les pull
+    adb shell su -c "cp -r $tracesdir /data/local/tmp/${NAME}_traces"
+    adb shell su -c "chown -R shell:shell /data/local/tmp/${NAME}_traces"
     
-    local target_dir="${OPT_D:-/tmp/tcpsnitch_output/android_${PACKAGE}}"
-    mkdir -p "$target_dir"
+    adb pull "/data/local/tmp/${NAME}_traces" "$OPT_D" 2>/dev/null
     
-    adb pull "$tracesdir" "$target_dir" 2>/dev/null
-    adb shell su -c rm -rf "$tracesdir"
-    info "Trace saved in $target_dir"
+    # On nettoie le téléphone
+    adb shell su -c "rm -rf $tracesdir /data/local/tmp/${NAME}_traces"
+    info "Trace saved in $OPT_D"
 }
 
 ###############################################################################
@@ -319,49 +321,48 @@ tcpsnitch_android() {
     readonly ANDROID_GIT_HASH=$(cat android_git_hash)
     get_android_package "$cmd"
     kill_android_package
-    
-    if [[ -z "$OPT_D" ]]; then
-        OPT_D="/tmp/tcpsnitch_output"
-    fi
+    create_opt_d_dir
 
     # Desactivate Selinux
     adb shell su -c setenforce 0
 
-    # Create logs dir (Android side)
+    # Create logs dir
     declare LOGS_DIR="/data/data/${PACKAGE}/${NAME}"
     adb shell su -c rm -rf "$LOGS_DIR"
     adb shell su -c mkdir -m 777 -p "$LOGS_DIR"
 
-    # Write meta data
+    # Write meta data (avec protection stricte des guillemets pour forcer le Root !)
     declare meta_dir="$LOGS_DIR/meta"
-    adb shell mkdir "$meta_dir"
-    adb shell "echo ${PACKAGE} > ${meta_dir}/app"
-    adb shell "echo ${PACKAGE} > ${meta_dir}/cmd"
-    adb shell "uname -r > ${meta_dir}/kernel"
-    adb shell "uname -m > ${meta_dir}/machine"
-    adb shell "sysctl net > ${meta_dir}/net 2>/dev/null"
-    adb shell "echo android > ${meta_dir}/os"
-    adb shell "echo ${VERSION} > ${meta_dir}/version"
-    adb shell "echo ${PACKAGE} > ${meta_dir}/app"
-    adb shell "echo ${ANDROID_GIT_HASH} > ${meta_dir}/git_hash"
-    adb shell "ip link | grep 'link/ether' | awk '{print \$2}' | sha256sum | awk '{print \$1}' > ${meta_dir}/host_id"
-    adb shell "dumpsys package ${PACKAGE} | grep versionName > ${meta_dir}/app_version"
+    adb shell su -c "'mkdir -p $meta_dir'"
+    adb shell su -c "'echo ${PACKAGE} > ${meta_dir}/app'"
+    adb shell su -c "'echo ${PACKAGE} > ${meta_dir}/cmd'"
+    adb shell su -c "'uname -r > ${meta_dir}/kernel'"
+    adb shell su -c "'uname -m > ${meta_dir}/machine'"
+    adb shell su -c "'sysctl net > ${meta_dir}/net 2>/dev/null'"
+    adb shell su -c "'echo android > ${meta_dir}/os'"
+    adb shell su -c "'echo ${VERSION} > ${meta_dir}/version'"
+    adb shell su -c "'echo ${ANDROID_GIT_HASH} > ${meta_dir}/git_hash'"
+    adb shell su -c "'settings get secure android_id > ${meta_dir}/host_id'"
+    adb shell su -c "'dumpsys package ${PACKAGE} 2>/dev/null | grep versionName > ${meta_dir}/app_version'"
     for i in $(seq 0 $((${META_OPTIONS_COUNT}-1))); do
-        adb shell "echo ${META_OPTIONS_VALS[$i]} > ${meta_dir}/${META_OPTIONS_NAMES[$i]}"
+        adb shell su -c "'echo ${META_OPTIONS_VALS[$i]} > ${meta_dir}/${META_OPTIONS_NAMES[$i]}'"
     done
+    
+    # On force les permissions 777 pour être certain que Firefox puisse écrire ses JSON
+    adb shell su -c "chmod -R 777 $LOGS_DIR"
 
     # Upload lib
     LIBPATH="/data"
     adb shell su -c chmod 777 /data
-    adb shell rm -f "${LIBPATH}/${ARM_LIB}"
+    adb shell su -c rm -f "${LIBPATH}/${ARM_LIB}"
     info "Uploading ${NAME} library to ${LIBPATH}/${ARM_LIB}"
     adb push ${ARM_LIB} ${LIBPATH} 2>/dev/null
+    adb shell su -c chmod 755 "${LIBPATH}/${ARM_LIB}"
 
     # Properties
     adb shell setprop wrap."${PACKAGE:0:26}" LD_PRELOAD="${LIBPATH}/${ARM_LIB}"
     adb shell setprop "${PROP_PREFIX}.opt_b" "$OPT_B"
     adb shell setprop "${PROP_PREFIX}.opt_d" "$LOGS_DIR"
-    adb shell setprop "${PROP_PREFIX}.opt_e" "$OPT_E"    
     adb shell setprop "${PROP_PREFIX}.opt_f" "$OPT_F"
     adb shell setprop "${PROP_PREFIX}.opt_l" "$OPT_L"
     adb shell setprop "${PROP_PREFIX}.opt_t" "$OPT_T"
@@ -370,7 +371,7 @@ tcpsnitch_android() {
 
     # Save properties for teardown (-k)
     adb shell setprop "${PROP_PREFIX}.opt_d_k" "$OPT_D"
-    
+
     start_android_package
     info "Execute './${NAME} -k ${cmd}' to terminate the capture"
 }
