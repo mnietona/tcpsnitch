@@ -56,7 +56,7 @@ usage() {
     echo "-a          instrument & launch app on connected android device."
     echo "-b <bytes>  dump tcp_info every <bytes> (def 4096)."
     echo "-c          is used for capturing pcap traces of the sockets. See section \"Packet capture\" for more info."
-    echo "-d <dir>    Base output directory (defaults to ./tcpsnitch_output)."
+    echo "-d <dir>    Base output directory (defaults to /tmp/tcpsnitch_output)."
     echo "-e          activate eBPF capture (requires root/sudo on Linux)."
     echo "-f <lvl>    verbosity of logs to file (0 to 5, defaults to 2)."
     echo "-h          show this help text."
@@ -204,8 +204,7 @@ pull_trace_for_android_package() {
     info "Pulling trace from Android device..."
     adb shell su -c chown -R shell "$tracesdir"
     
-    # [MODIFICATION] On pull dans le dossier spécifié ou courant (tcpsnitch_output)
-    local target_dir="${OPT_D:-${CWD}/tcpsnitch_output/android_${PACKAGE}}"
+    local target_dir="${OPT_D:-/tmp/tcpsnitch_output/android_${PACKAGE}}"
     mkdir -p "$target_dir"
     
     adb pull "$tracesdir" "$target_dir" 2>/dev/null
@@ -240,7 +239,7 @@ tcpsnitch_linux() {
     readonly LINUX_GIT_HASH=$(cat linux_git_hash)
 
     # Default output directory if not specified
-    local BASE_DIR="${OPT_D:-${CWD}/tcpsnitch_output}"
+    local BASE_DIR="${OPT_D:-/tmp/tcpsnitch_output_$(id -u)}"
     
     # Directory name
     declare array=(${1//\// });
@@ -322,7 +321,7 @@ tcpsnitch_android() {
     kill_android_package
     
     if [[ -z "$OPT_D" ]]; then
-        OPT_D="${CWD}/tcpsnitch_output"
+        OPT_D="/tmp/tcpsnitch_output"
     fi
 
     # Desactivate Selinux
