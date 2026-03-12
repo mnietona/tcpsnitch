@@ -13,7 +13,9 @@ char *alloc_concat_path(const char *path1, const char *path2);
 char *alloc_append_int_to_path(const char *path1, int i);
 
 char *alloc_android_opt_d(void);
+#ifndef __ANDROID__
 char *alloc_pcap_path_str(Socket *con);
+#endif
 char *alloc_json_path_str(Socket *con);
 
 char *alloc_cmdline_str(void);

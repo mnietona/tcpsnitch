@@ -204,9 +204,11 @@ char *alloc_json_path_str(Socket *con) {
         return alloc_file_name(con->id, ".json");
 }
 
+#ifndef __ANDROID__
 char *alloc_pcap_path_str(Socket *con) {
         return alloc_file_name(con->id, ".pcap");
 }
+#endif
 
 char *alloc_cmdline_str(void) {
         static int cmd_line_length = 1024;

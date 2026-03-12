@@ -32,7 +32,7 @@
 #ifdef __ANDROID__
 #define MUTEX_ERRORCHECK PTHREAD_MUTEX_INITIALIZER
 #else
-#define MUTEX_ERRORCHECK PTHREAD_ERRORCHECK_MUTEX_INITIALIZER
+#define MUTEX_ERRORCHECK PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP
 #endif
 
 void sock_ev_forked_socket(int fd, SockInfo *sock_info);
@@ -481,6 +481,7 @@ void sock_start_capture(int fd, const struct sockaddr *addr_to) {        Socket 
              }
         }
 
+#ifndef __ANDROID__
         // Build pcap file path
         char *pcap_file_path = alloc_pcap_path_str(sock);
         if (!pcap_file_path) goto error_out;
@@ -500,6 +501,9 @@ void sock_start_capture(int fd, const struct sockaddr *addr_to) {        Socket 
 error1:
         free(pcap_file_path);
 error_out:
+#else
+error_out:
+#endif
         ra_unlock_elem(fd);
         LOG_FUNC_ERROR;
         return;
@@ -512,8 +516,10 @@ void log_event(LogLevel lvl, int ev_type_cons, int fd, int con_id) {
 
 void free_and_dump_socket(int fd) {
         Socket *sock = ra_remove_elem(fd);
+#ifndef __ANDROID__
         if (sock->capture_switch != NULL)
                 stop_capture(sock->capture_switch, sock->rtt * 2);
+#endif
         
         dump_events_as_json(sock);
 
@@ -1119,11 +1125,12 @@ void sock_ev_fcntl(int fd, int ret, int err, int cmd, ...) {
                 case F_SETLK:
                 case F_SETLKW:
                 case F_GETLK:
-#ifndef __ANDROID__
+#if defined(F_GETLK64) && (F_GETLK64 != F_GETLK)
                 case F_GETLK64:
                 case F_SETLK64:
                 case F_SETLKW64:
-#elif LIBC_VERSION > 217  // Absolutely not sure this is the right boundary!
+#endif
+#if defined(F_OFD_GETLK) && !defined(__ANDROID__)
                 case F_OFD_SETLK:
                 case F_OFD_SETLKW:
                 case F_OFD_GETLK:
