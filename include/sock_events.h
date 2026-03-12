@@ -2,7 +2,9 @@
 #define SOCK_EVENTS_H
 
 #include <linux/tcp.h>
+#ifndef __ANDROID__
 #include <pcap/pcap.h>
+#endif
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>

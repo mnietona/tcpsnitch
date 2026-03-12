@@ -6,7 +6,9 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#ifndef __ANDROID__
 #include <pcap/pcap.h>
+#endif
 #include <poll.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -28,9 +30,9 @@
 #include "verbose_mode.h"
 
 #ifdef __ANDROID__
-#define MUTEX_ERRORCHECK PTHREAD_ERRORCHECK_MUTEX_INITIALIZER
+#define MUTEX_ERRORCHECK PTHREAD_MUTEX_INITIALIZER
 #else
-#define MUTEX_ERRORCHECK PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP
+#define MUTEX_ERRORCHECK PTHREAD_ERRORCHECK_MUTEX_INITIALIZER
 #endif
 
 void sock_ev_forked_socket(int fd, SockInfo *sock_info);
@@ -1117,7 +1119,7 @@ void sock_ev_fcntl(int fd, int ret, int err, int cmd, ...) {
                 case F_SETLK:
                 case F_SETLKW:
                 case F_GETLK:
-#ifdef __ANDROID__
+#ifndef __ANDROID__
                 case F_GETLK64:
                 case F_SETLK64:
                 case F_SETLKW64:

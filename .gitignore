@@ -51,3 +51,6 @@ ff_profile/
 *.png
 *.csv
 
+# --- Android ---
+android_deps/
+

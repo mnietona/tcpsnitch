@@ -1,4 +1,5 @@
 
+#ifndef __ANDROID__
 #include "packet_sniffer.h"
 #include <pcap.h>
 #include <pthread.h>
@@ -210,3 +211,4 @@ error:
         LOG_FUNC_ERROR;
         return -1;
 }
+#endif /* __ANDROID__ */

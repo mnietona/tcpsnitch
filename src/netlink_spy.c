@@ -1,4 +1,5 @@
 #include "netlink_spy.h"
+#include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -225,8 +226,10 @@ static void *netlink_monitor_thread(void *arg) {
         }
     }
 
+#ifndef __ANDROID__
     close(sock);
     return NULL;
+#endif
 }
 
 void start_netlink_spy_thread(void) {

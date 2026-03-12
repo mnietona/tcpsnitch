@@ -151,7 +151,7 @@ int ra_get_size(void) {
         return ret;
 }
 
-void ra_free() {
+void ra_free(void) {
         pthread_rwlock_rdlock(&rwlock);
         for (int i = 0; i < size; i++) {
                 if (array[i]) {

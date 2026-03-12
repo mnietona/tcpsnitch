@@ -190,27 +190,17 @@ EXPORT ssize_t sendto(int fd, const void *buf, size_t len, int flags,
         return ret;
 }
 
-#if defined(__ANDROID__) && __ANDROID_API__ <= 19
-override(recvfrom, ssize_t, 6, void *a, size_t b, unsigned int c,
-         const struct sockaddr *d, socklen_t *e);
-#elif defined(__ANDROID__)
-override(recvfrom, ssize_t, 6, void *a, size_t b, int c,
-         const struct sockaddr *d, socklen_t *e);
-#else
+#ifndef __ANDROID__
 override(recvfrom, ssize_t, 6, void *a, size_t b, int c, struct sockaddr *d,
          socklen_t *e);
+
 #endif
 
-#if defined(__ANDROID__) && __ANDROID_API__ <= 19
-override(sendmsg, ssize_t, 3, const struct msghdr *a, unsigned int b);
-override(recvmsg, ssize_t, 3, struct msghdr *a, unsigned int b);
-#else
-override(sendmsg, ssize_t, 3, const struct msghdr *a, int b);
-override(recvmsg, ssize_t, 3, struct msghdr *a, int b);
-#endif
+#ifndef __ANDROID__
 override(sendmmsg, int, 4, struct mmsghdr *a, unsigned int b, int c);
 override(recvmmsg, int, 5, struct mmsghdr *a, unsigned int b, int c,
          struct timespec *d);
+#endif
 
 override(getsockname, int, 3, struct sockaddr *a, socklen_t *b);
 override(getpeername, int, 3, struct sockaddr *a, socklen_t *b);

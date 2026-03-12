@@ -2,7 +2,9 @@
 #define PACKET_SNIFFER_H
 
 #include <netinet/in.h>
+#ifndef __ANDROID__
 #include <pcap.h>
+#endif
 #include <pthread.h>
 #include <stdbool.h>
 
