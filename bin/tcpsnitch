@@ -14,11 +14,12 @@ readonly VERSION_STR="${NAME} version ${VERSION}"
 readonly I386_LIB="lib${NAME}.so.${VERSION}-i386"
 readonly AMD64_LIB="lib${NAME}.so.${VERSION}-x86-64"
 readonly ARM_LIB="lib${NAME}.so.${VERSION}-arm64"
-readonly SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+readonly SCRIPT_DIR
 readonly PROP_PREFIX="be.ucl.${NAME}"
-readonly HIDDEN_ERRORS="wrong ELF class"
 readonly TOP_PID=$$
-readonly CWD=$(pwd)
+CWD=$(pwd)
+readonly CWD
 
 # Option default values
 OPT_A=0
@@ -27,8 +28,7 @@ OPT_C=0
 OPT_D=""
 OPT_E=0 
 OPT_F=2   
-OPT_L=1
-OPT_P=0
+OPT_L=2
 OPT_T=1000
 OPT_U=100000 
 OPT_V=0
@@ -36,7 +36,7 @@ OPT_V=0
 # Options saved in meta files
 META_OPTIONS_NAMES=(opt_b opt_f opt_u)
 META_OPTIONS_COUNT=${#META_OPTIONS_NAMES[@]}
-META_OPTIONS_VALS=($OPT_B $OPT_F $OPT_U)
+META_OPTIONS_VALS=("$OPT_B" "$OPT_F" "$OPT_U")
 
 ###############################################################################
 
@@ -46,8 +46,9 @@ META_OPTIONS_VALS=($OPT_B $OPT_F $OPT_U)
 
 usage() {
     local _head="Usage: ${NAME}"
-    local _skip=$(printf "%0.s " $(seq 1 ${#_head}))
-    echo "${_head} [-acehpv] [ -b <bytes> ] [ -d <dir>] [ -f <lvl> ]"
+    local _skip
+    _skip=$(printf "%0.s " $(seq 1 ${#_head}))
+    echo "${_head} [-acehv] [ -b <bytes> ] [ -d <dir>] [ -f <lvl> ]"
     echo "${_skip} [ -k <pkg> ] [ -l <lvl> ] [ -t <msec> ]"
     echo "${_skip} [ -u <usec> ] [ --version ] <app> [<args>]"
     echo ""
@@ -62,7 +63,6 @@ usage() {
     echo "-h          show this help text."
     echo "-k <pkg>    kill instrumented android <pkg> and pull traces."
     echo "-l <lvl>    verbosity of logs to stderr (0 to 5, defaults to 2)."
-    echo "-p          pedantic, ask a lot of annoying questions."
     echo "-t <msec>   dump to JSON file every <msec> (def. 1000)."
     echo "-u <usec>   dump tcp_info every <usec> (def 100000 i.e. 100ms)."
     echo "-v          activate verbose output (shows app stdout/stderr)."
@@ -70,7 +70,7 @@ usage() {
 }
 
 parse_options() {
-    while getopts ":acehpvb:d:f:k:l:t:u:-:" opt; do
+    while getopts ":acehvb:d:f:k:l:t:u:-:" opt; do
         case "${opt}" in
             -) 
                 case "${OPTARG}" in
@@ -92,9 +92,8 @@ parse_options() {
             e) OPT_E=1 ;; 
             f) assert_int "${OPTARG}" "invalid -f argument" ; OPT_F=${OPTARG} ;;
             h) usage ; exit 0 ;;
-            k) tcpsnitch_android_teardown $@ ; exit 0 ;;
+            k) tcpsnitch_android_teardown "$@" ; exit 0 ;;
             l) assert_int "${OPTARG}" "invalid -l argument" ; OPT_L=${OPTARG} ;;
-            p) OPT_P=1 ;;
             u) assert_int "${OPTARG}" "invalid -u argument" ; OPT_U=${OPTARG} ;;
             t) assert_int "${OPTARG}" "invalid -t argument" ; OPT_T=${OPTARG} ;;
             v) OPT_V=$((OPT_V+1)) ;;
@@ -131,8 +130,9 @@ assert_int() {
     fi
 }
 
+
 cd_script_dir() {
-    cd "$SCRIPT_DIR" || exit "Could not cd to ${SCRIPT_DIR}"
+    cd "$SCRIPT_DIR" || { echo "Could not cd to ${SCRIPT_DIR}"; exit 1; }
 }
 
 assert_lib_present() {
@@ -169,12 +169,13 @@ get_android_package() {
     fi
 
     # Check that adb sees exactly 1 device
-    if [ $(adb devices | wc -l) -ne 3 ]; then
+    if [[ $(adb devices | wc -l) -ne 3 ]]; then
         error "adb must see exactly 1 device"
     fi
 
     declare prefix="package:"
-    declare match=$(adb shell pm list packages | grep -m 1 -s "${package_name}" | tr -d '\r')
+    declare match
+    match=$(adb shell pm list packages | grep -m 1 -s "${package_name}" | tr -d '\r')
 
     # Check that package exists
     if [ -z "${match}" ]; then
@@ -235,20 +236,29 @@ tcpsnitch_linux() {
     fi
 
     cd_script_dir
-    readonly ENABLE_I386=$(cat enable_i386 2>/dev/null || false)
-    $ENABLE_I386 && assert_lib_present "$I386_LIB"
+    if [[ -f "enable_i386" ]] && [[ "$(cat enable_i386)" == "true" ]]; then
+    readonly ENABLE_I386=true
+    else
+        readonly ENABLE_I386=false
+    fi
+
+    if [[ "$ENABLE_I386" == "true" ]]; then
+        assert_lib_present "$I386_LIB"
+    fi
     assert_lib_present "$AMD64_LIB"
-    readonly LINUX_GIT_HASH=$(cat linux_git_hash)
+    LINUX_GIT_HASH=$(cat linux_git_hash)
+    readonly LINUX_GIT_HASH
 
     # Default output directory if not specified
     local BASE_DIR="${OPT_D:-/tmp/tcpsnitch_output_$(id -u)}"
     
     # Directory name
-    declare array=(${1//\// });
+    IFS='/' read -ra array <<< "$1"
     declare app=${array[-1]}
 
     # Add timestamp 
-    local TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    local TIMESTAMP
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     local UNIQUE_NAME="${app}_${TIMESTAMP}"
     
     local RUN_DIR="${BASE_DIR}/${UNIQUE_NAME}"
@@ -275,12 +285,11 @@ tcpsnitch_linux() {
     done
 
     local _preload_opt=""
-    ${ENABLE_I386} && _preload_opt+="$(readlink -f "$I386_LIB") "
+    [[ "$ENABLE_I386" == "true" ]] && _preload_opt+="$(readlink -f "$I386_LIB") "
     _preload_opt+=$(readlink -f "$AMD64_LIB")
 
-    cd "$CWD"
+    cd "$CWD" || exit 1
     exec 3>&1
-    exec 4>&2
     
     if [[ $OPT_V -gt 0 ]]; then
         TCPSNITCH_OPT_B=$OPT_B \
@@ -318,7 +327,8 @@ tcpsnitch_linux() {
 tcpsnitch_android() {
     cd_script_dir
     assert_lib_present "$ARM_LIB"
-    readonly ANDROID_GIT_HASH=$(cat android_git_hash)
+    ANDROID_GIT_HASH=$(cat android_git_hash)
+    readonly ANDROID_GIT_HASH
     get_android_package "$cmd"
     kill_android_package
     create_opt_d_dir
@@ -356,7 +366,7 @@ tcpsnitch_android() {
     adb shell su -c chmod 777 /data
     adb shell su -c rm -f "${LIBPATH}/${ARM_LIB}"
     info "Uploading ${NAME} library to ${LIBPATH}/${ARM_LIB}"
-    adb push ${ARM_LIB} ${LIBPATH} 2>/dev/null
+    adb push "${ARM_LIB}" "${LIBPATH}" 2>/dev/null
     adb shell su -c chmod 755 "${LIBPATH}/${ARM_LIB}"
 
     # Properties

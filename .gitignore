@@ -2,14 +2,13 @@
 *.so*
 *.sw*
 *.pyc
-# *.py 
 tags
 .config.in
 linux_git_hash
 android_git_hash
 enable_i386
 
-# --- Python & Environnement Virtuel (Venv) ---
+# --- Python & Environnement Virtuel ---
 __pycache__/
 *.py[cod]
 *$py.class
@@ -19,7 +18,7 @@ env/
 .env
 *.egg-info/
 
-# --- macOS (Fichiers système polluants) ---
+# --- macOS ---
 .DS_Store
 .DS_Store?
 ._*
@@ -28,29 +27,39 @@ env/
 .AppleDouble
 .LSOverride
 
-# --- Compilation C (Objets et librairies statiques) ---
+# --- Compilation C ---
 *.o
 *.a
 
-# --- Données & Traces (Ne jamais versionner les résultats de tests !) ---
+# --- Données & Traces ---
 tcpsnitch_output/
-*.json
-*.jsonl
+compile_commands.json
 *.pcap
 logs.txt
 meta/
+firefox/
+ff_profile/
+*.json
+*.jsonl
+*.txt
+
+# --- Fichiers générés ---
+include/tcpsnitch.skel.h
+
+# --- clangd (cache uniquement, pas la config) ---
+.cache/
 
 # --- Divers ---
 *.log
 *.tmp
 *.bak
 *.qlog
-firefox/
-*.txt
-ff_profile/
 *.png
 *.csv
 
+# --- VSCode (settings locaux) ---
+.vscode/
+.clang*
+
 # --- Android ---
 android_deps/
-

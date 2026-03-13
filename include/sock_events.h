@@ -13,434 +13,438 @@
 #include <time.h>
 
 typedef enum SockEventType {
-        SOCK_EV_SOCKET,
-        SOCK_EV_FORKED_SOCKET,
-        SOCK_EV_GHOST_SOCKET,
-        SOCK_EV_BIND,
-        SOCK_EV_CONNECT,
-        SOCK_EV_SHUTDOWN,
-        SOCK_EV_LISTEN,
-        SOCK_EV_ACCEPT,
-        SOCK_EV_ACCEPT4,
-        SOCK_EV_GETSOCKOPT,
-        SOCK_EV_SETSOCKOPT,
-        SOCK_EV_SEND,
-        SOCK_EV_RECV,
-        SOCK_EV_SENDTO,
-        SOCK_EV_RECVFROM,
-        SOCK_EV_SENDMSG,
-        SOCK_EV_RECVMSG,
+    SOCK_EV_SOCKET,
+    SOCK_EV_FORKED_SOCKET,
+    SOCK_EV_GHOST_SOCKET,
+    SOCK_EV_BIND,
+    SOCK_EV_CONNECT,
+    SOCK_EV_SHUTDOWN,
+    SOCK_EV_LISTEN,
+    SOCK_EV_ACCEPT,
+    SOCK_EV_ACCEPT4,
+    SOCK_EV_GETSOCKOPT,
+    SOCK_EV_SETSOCKOPT,
+    SOCK_EV_SEND,
+    SOCK_EV_RECV,
+    SOCK_EV_SENDTO,
+    SOCK_EV_RECVFROM,
+    SOCK_EV_SENDMSG,
+    SOCK_EV_RECVMSG,
 #if !defined(__ANDROID__) || __ANDROID_API__ >= 21
-        SOCK_EV_SENDMMSG,
-        SOCK_EV_RECVMMSG,
+    SOCK_EV_SENDMMSG,
+    SOCK_EV_RECVMMSG,
 #endif
-        SOCK_EV_GETSOCKNAME,
-        SOCK_EV_GETPEERNAME,
-        SOCK_EV_SOCKATMARK,
-        SOCK_EV_ISFDTYPE,
-        // unistd.h
-        SOCK_EV_WRITE,
-        SOCK_EV_READ,
-        SOCK_EV_CLOSE,
-        SOCK_EV_DUP,
-        SOCK_EV_DUP2,
-        SOCK_EV_DUP3,
-        // sys/uio.h
-        SOCK_EV_WRITEV,
-        SOCK_EV_READV,
-        // sys/ioctl.h
-        SOCK_EV_IOCTL,
-        // sendfile.h
-        SOCK_EV_SENDFILE,
-        // poll.h
-        SOCK_EV_POLL,
-        SOCK_EV_PPOLL,
-        // sys/select.h
-        SOCK_EV_SELECT,
-        SOCK_EV_PSELECT,
-        // fcntl.h
-        SOCK_EV_FCNTL,
-        // epoll.h
-        SOCK_EV_EPOLL_CTL,
-        SOCK_EV_EPOLL_WAIT,
-        SOCK_EV_EPOLL_PWAIT,
-        // stdio.h
-        SOCK_EV_FDOPEN,
-        // splice
-        SOCK_EV_SPLICE,
-        // netlink
-        SOCK_EV_NETLINK,
-        // others
-        SOCK_EV_TCP_INFO
+    SOCK_EV_GETSOCKNAME,
+    SOCK_EV_GETPEERNAME,
+    SOCK_EV_SOCKATMARK,
+    SOCK_EV_ISFDTYPE,
+    // unistd.h
+    SOCK_EV_WRITE,
+    SOCK_EV_READ,
+    SOCK_EV_CLOSE,
+    SOCK_EV_DUP,
+    SOCK_EV_DUP2,
+    SOCK_EV_DUP3,
+    // sys/uio.h
+    SOCK_EV_WRITEV,
+    SOCK_EV_READV,
+    // sys/ioctl.h
+    SOCK_EV_IOCTL,
+    // sendfile.h
+    SOCK_EV_SENDFILE,
+    // poll.h
+    SOCK_EV_POLL,
+    SOCK_EV_PPOLL,
+    // sys/select.h
+    SOCK_EV_SELECT,
+    SOCK_EV_PSELECT,
+    // fcntl.h
+    SOCK_EV_FCNTL,
+    // epoll.h
+    SOCK_EV_EPOLL_CTL,
+    SOCK_EV_EPOLL_WAIT,
+    SOCK_EV_EPOLL_PWAIT,
+    // stdio.h
+    SOCK_EV_FDOPEN,
+    // splice
+    SOCK_EV_SPLICE,
+    // netlink
+    SOCK_EV_NETLINK,
+    // others
+    SOCK_EV_TCP_INFO
 } SockEventType;
 
 typedef struct {
-        SockEventType type;
-        unsigned long timestamp_usec;
-        int return_value;
-        bool success;
-        int err;
-        long id;
-        pid_t thread_id;
-        unsigned int repeat_count; 
+    SockEventType type;
+    unsigned long timestamp_usec;
+    int return_value;
+    bool success;
+    int err;
+    long id;
+    pid_t thread_id;
+    unsigned int repeat_count;
 } SockEvent;
 
 typedef struct {
-        int domain;
-        int type;
-        int protocol;
-        bool sock_cloexec;
-        bool sock_nonblock;
-        bool filled;
+    int domain;
+    int type;
+    int protocol;
+    bool sock_cloexec;
+    bool sock_nonblock;
+    bool filled;
 } SockInfo;
 
 typedef struct {
-        SockEvent super;
-        SockInfo sock_info;
+    SockEvent super;
+    SockInfo sock_info;
 } SockEvSocket;
 
 typedef struct {
-        SockEvent super;
-        SockInfo sock_info;
+    SockEvent super;
+    SockInfo sock_info;
 } SockEvForkedSocket;
 
 typedef struct {
-        SockEvent super;
-        SockInfo sock_info;
+    SockEvent super;
+    SockInfo sock_info;
 } SockEvGhostSocket;
 
 typedef struct {
-        struct sockaddr_storage sockaddr_sto;
-        socklen_t len;
+    struct sockaddr_storage sockaddr_sto;
+    socklen_t len;
 } Addr;
 
 typedef struct {
-        SockEvent super;
-        Addr addr;
+    SockEvent super;
+    Addr addr;
 } SockEvBind;
 
 typedef struct {
-        SockEvent super;
-        Addr addr;
+    SockEvent super;
+    Addr addr;
 } SockEvConnect;
 
 typedef struct {
-        SockEvent super;
-        bool shut_rd;
-        bool shut_wr;
+    SockEvent super;
+    bool shut_rd;
+    bool shut_wr;
 } SockEvShutdown;
 
 typedef struct {
-        SockEvent super;
-        int backlog;
+    SockEvent super;
+    int backlog;
 } SockEvListen;
 
 typedef struct {
-        SockEvent super;
-        SockInfo sock_info;
-        Addr addr;
+    SockEvent super;
+    SockInfo sock_info;
+    Addr addr;
 } SockEvAccept;
 
 typedef struct {
-        SockEvent super;
-        SockInfo sock_info;
-        Addr addr;
-        int flags;
+    SockEvent super;
+    SockInfo sock_info;
+    Addr addr;
+    int flags;
 } SockEvAccept4;
 
 typedef struct {
-        int level;
-        int optname;
-        void *optval;
-        socklen_t optlen;
-        bool getsockopt;
-        int fd;
+    int level;
+    int optname;
+    void *optval;
+    socklen_t optlen;
+    bool getsockopt;
+    int fd;
 } Sockopt;
 
 typedef struct {
-        SockEvent super;
-        Sockopt sockopt;
+    SockEvent super;
+    Sockopt sockopt;
 } SockEvGetsockopt;
 
 typedef struct {
-        SockEvent super;
-        Sockopt sockopt;
+    SockEvent super;
+    Sockopt sockopt;
 } SockEvSetsockopt;
 
 typedef struct {
-        SockEvent super;
-        size_t bytes;
-        int flags;
+    SockEvent super;
+    size_t bytes;
+    int flags;
 } SockEvSend;
 
 typedef struct {
-        SockEvent super;
-        size_t bytes;
-        int flags;
+    SockEvent super;
+    size_t bytes;
+    int flags;
 } SockEvRecv;
 
 typedef struct {
-        SockEvent super;
-        size_t bytes;
-        int flags;
-        Addr addr;
+    SockEvent super;
+    size_t bytes;
+    int flags;
+    Addr addr;
 } SockEvSendto;
 
 typedef struct {
-        SockEvent super;
-        size_t bytes;
-        int flags;
-        Addr addr;
+    SockEvent super;
+    size_t bytes;
+    int flags;
+    Addr addr;
 } SockEvRecvfrom;
 
 typedef struct {
-        int iovec_count;
-        size_t *iovec_sizes;
+    int iovec_count;
+    size_t *iovec_sizes;
 } Iovec;
 
 typedef struct {
-        Iovec iovec;
-        struct sockaddr_storage addr;
-        int flags;
-        struct msghdr *msghdr;
+    Iovec iovec;
+    struct sockaddr_storage addr;
+    int flags;
+    struct msghdr *msghdr;
 } Msghdr;
 
 typedef struct {
-        SockEvent super;
-        size_t bytes;
-        int flags;
-        Msghdr msghdr;
+    SockEvent super;
+    size_t bytes;
+    int flags;
+    Msghdr msghdr;
 } SockEvSendmsg;
 
 typedef struct {
-        SockEvent super;
-        size_t bytes;
-        int flags;
-        Msghdr msghdr;
+    SockEvent super;
+    size_t bytes;
+    int flags;
+    Msghdr msghdr;
 } SockEvRecvmsg;
 
 typedef struct {
-        time_t seconds;
-        long nanoseconds;
+    time_t seconds;
+    long nanoseconds;
 } Timeout;
 
 #if !defined(__ANDROID__) || __ANDROID_API__ >= 21
 typedef struct {
-        Msghdr msghdr;
-        unsigned int bytes_transmitted;
+    Msghdr msghdr;
+    unsigned int bytes_transmitted;
 } Mmsghdr;
 
 typedef struct {
-        SockEvent super;
-        size_t bytes;
-        int flags;
-        int mmsghdr_count;
-        Mmsghdr *mmsghdr_vec;
+    SockEvent super;
+    size_t bytes;
+    int flags;
+    int mmsghdr_count;
+    Mmsghdr *mmsghdr_vec;
 } SockEvSendmmsg;
 
 typedef struct {
-        SockEvent super;
-        size_t bytes;
-        int flags;
-        Timeout timeout;
-        int mmsghdr_count;
-        Mmsghdr *mmsghdr_vec;
+    SockEvent super;
+    size_t bytes;
+    int flags;
+    Timeout timeout;
+    int mmsghdr_count;
+    Mmsghdr *mmsghdr_vec;
 } SockEvRecvmmsg;
 #endif
 
 typedef struct {
-        SockEvent super;
-        Addr addr;
+    SockEvent super;
+    Addr addr;
 } SockEvGetsockname;
 
 typedef struct {
-        SockEvent super;
-        Addr addr;
+    SockEvent super;
+    Addr addr;
 } SockEvGetpeername;
 
-typedef struct { SockEvent super; } SockEvSockatmark;
+typedef struct {
+    SockEvent super;
+} SockEvSockatmark;
 
 typedef struct {
-        SockEvent super;
-        int fdtype;
+    SockEvent super;
+    int fdtype;
 } SockEvIsfdtype;
 
 typedef struct {
-        SockEvent super;
-        size_t bytes;
+    SockEvent super;
+    size_t bytes;
 } SockEvWrite;
 
 typedef struct {
-        SockEvent super;
-        size_t bytes;
+    SockEvent super;
+    size_t bytes;
 } SockEvRead;
 
-typedef struct { SockEvent super; } SockEvClose;
+typedef struct {
+    SockEvent super;
+} SockEvClose;
 
 typedef struct {
-        SockEvent super;
-        SockInfo sock_info;
+    SockEvent super;
+    SockInfo sock_info;
 } SockEvDup;
 
 typedef struct {
-        SockEvent super;
-        SockInfo sock_info;
-        int newfd;
+    SockEvent super;
+    SockInfo sock_info;
+    int newfd;
 } SockEvDup2;
 
 typedef struct {
-        SockEvent super;
-        SockInfo sock_info;
-        int newfd;
-        bool o_cloexec;
+    SockEvent super;
+    SockInfo sock_info;
+    int newfd;
+    bool o_cloexec;
 } SockEvDup3;
 
 typedef struct {
-        SockEvent super;
-        size_t bytes;
-        Iovec iovec;
+    SockEvent super;
+    size_t bytes;
+    Iovec iovec;
 } SockEvWritev;
 
 typedef struct {
-        SockEvent super;
-        size_t bytes;
-        Iovec iovec;
+    SockEvent super;
+    size_t bytes;
+    Iovec iovec;
 } SockEvReadv;
 
 typedef struct {
-        SockEvent super;
+    SockEvent super;
 #ifdef __ANDROID__
-        int request;
+    int request;
 #else
-        unsigned long int request;
+    unsigned long int request;
 #endif
 } SockEvIoctl;
 
 typedef struct {
-        SockEvent super;
-        size_t bytes;
+    SockEvent super;
+    size_t bytes;
 } SockEvSendfile;
 
 typedef struct {
-        bool pollin;
-        bool pollpri;
-        bool pollout;
-        bool pollrdhup;
-        bool pollerr;
-        bool pollhup;
-        bool pollnval;
+    bool pollin;
+    bool pollpri;
+    bool pollout;
+    bool pollrdhup;
+    bool pollerr;
+    bool pollhup;
+    bool pollnval;
 } PollEvents;
 
 typedef struct {
-        SockEvent super;
-        Timeout timeout;
-        PollEvents requested_events;
-        PollEvents returned_events;
+    SockEvent super;
+    Timeout timeout;
+    PollEvents requested_events;
+    PollEvents returned_events;
 } SockEvPoll;
 
 typedef struct {
-        SockEvent super;
-        Timeout timeout;
-        PollEvents requested_events;
-        PollEvents returned_events;
+    SockEvent super;
+    Timeout timeout;
+    PollEvents requested_events;
+    PollEvents returned_events;
 } SockEvPpoll;
 
 typedef struct {
-        bool read;
-        bool write;
-        bool except;
+    bool read;
+    bool write;
+    bool except;
 } SelectEvents;
 
 typedef struct {
-        SockEvent super;
-        Timeout timeout;
-        SelectEvents requested_events;
-        SelectEvents returned_events;
+    SockEvent super;
+    Timeout timeout;
+    SelectEvents requested_events;
+    SelectEvents returned_events;
 } SockEvSelect;
 
 typedef struct {
-        SockEvent super;
-        Timeout timeout;
-        SelectEvents requested_events;
-        SelectEvents returned_events;
+    SockEvent super;
+    Timeout timeout;
+    SelectEvents requested_events;
+    SelectEvents returned_events;
 } SockEvPselect;
 
 typedef struct {
-        SockEvent super;
-        SockInfo sock_info;
-        int cmd;
-        int arg;
+    SockEvent super;
+    SockInfo sock_info;
+    int cmd;
+    int arg;
 } SockEvFcntl;
 
 typedef struct {
-        SockEvent super;
-        int op;
-        uint32_t requested_events;
+    SockEvent super;
+    int op;
+    uint32_t requested_events;
 } SockEvEpollCtl;
 
 typedef struct {
-        SockEvent super;
-        int timeout;
-        uint32_t returned_events;
+    SockEvent super;
+    int timeout;
+    uint32_t returned_events;
 } SockEvEpollWait;
 
 typedef struct {
-        SockEvent super;
-        int timeout;
-        uint32_t returned_events;
+    SockEvent super;
+    int timeout;
+    uint32_t returned_events;
 } SockEvEpollPwait;
 
 typedef struct {
-        SockEvent super;
-        char *mode;
+    SockEvent super;
+    char *mode;
 } SockEvFdopen;
 
 typedef struct {
-        SockEvent super;
-        int fd_in;
-        int fd_out;
-        size_t len;
-        unsigned int flags;
+    SockEvent super;
+    int fd_in;
+    int fd_out;
+    size_t len;
+    unsigned int flags;
 } SockEvSplice;
 
 typedef struct {
-        SockEvent super;
-        struct tcp_info info;
+    SockEvent super;
+    struct tcp_info info;
 } SockEvTcpInfo;
 
 typedef struct SockEventNode SockEventNode;
 struct SockEventNode {
-        SockEvent *data;
-        SockEventNode *next;
+    SockEvent *data;
+    SockEventNode *next;
 };
 
 typedef struct {
-        SockEvent super;
-        int netlink_msg_type; // RTM_NEWADDR, RTM_DELADDR, etc.
-        int if_index;         
-        int family;           // AF_INET (IPv4) ou AF_INET6 (IPv6)
-        char *ip_address;     // L'adresse IP
+    SockEvent super;
+    int netlink_msg_type; // RTM_NEWADDR, RTM_DELADDR, etc.
+    int if_index;
+    int family;       // AF_INET (IPv4) ou AF_INET6 (IPv6)
+    char *ip_address; // L'adresse IP
 } SockEvNetlink;
 
 typedef struct {
-        // To be freed
-        SockEventNode *head;  // Head for list of events.
-        SockEventNode *tail;  // Tail for list of events.
-        // Others
-        int id;
-        int fd;
-        SockInfo sock_info;
-        long events_count;
-        long pending_events; // Compteur pour le dump
-        FILE *json_fp;       // Descripteur de fichier persistant
-        unsigned long bytes_sent;
-        unsigned long bytes_received;
-        long last_info_dump_micros;
-        long last_info_dump_bytes;
-        bool bound;
-        struct sockaddr_storage bound_addr;
-        int rtt;
-        bool *capture_switch;
+    // To be freed
+    SockEventNode *head; // Head for list of events.
+    SockEventNode *tail; // Tail for list of events.
+    // Others
+    int id;
+    int fd;
+    SockInfo sock_info;
+    long events_count;
+    long pending_events; // Compteur pour le dump
+    FILE *json_fp;       // Descripteur de fichier persistant
+    unsigned long bytes_sent;
+    unsigned long bytes_received;
+    long last_info_dump_micros;
+    long last_info_dump_bytes;
+    bool bound;
+    struct sockaddr_storage bound_addr;
+    int rtt;
+    bool *capture_switch;
 } Socket;
 
 const char *string_from_sock_event_type(SockEventType type);
@@ -465,10 +469,10 @@ void sock_ev_shutdown(int fd, int ret, int err, int how);
 
 void sock_ev_listen(int fd, int ret, int err, int backlog);
 
-void sock_ev_accept(int fd, int ret, int err, struct sockaddr *addr,
+void sock_ev_accept(int fd, int ret, int err, const struct sockaddr *addr,
                     socklen_t *addr_len);
 
-void sock_ev_accept4(int fd, int ret, int err, struct sockaddr *addr,
+void sock_ev_accept4(int fd, int ret, int err, const struct sockaddr *addr,
                      socklen_t *addr_len, int flags);
 
 void sock_ev_getsockopt(int fd, int ret, int err, int level, int optname,
@@ -575,12 +579,10 @@ void sock_ev_tcp_info(int fd, int ret, int err, struct tcp_info *info);
 
 void dump_all_sock_events(void);
 
-void sock_ev_free(void);  // Free state.
 // Free state and restore to default state (called after fork()).
 void sock_ev_reset(void);
 
-void sock_ev_netlink_init(int fd);
-void sock_ev_netlink(int fd, int msg_type, int if_index, int family, const char *ip);
-
+void sock_ev_netlink(int fd, int msg_type, int if_index, int family,
+                     const char *ip);
 
 #endif

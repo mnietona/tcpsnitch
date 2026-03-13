@@ -1,20 +1,20 @@
 #include "netlink_spy.h"
+#include "logger.h"
+#include "sock_events.h"
+#include <arpa/inet.h>
+#include <errno.h>
+#include <ifaddrs.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+#include <net/if.h>
 #include <netdb.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <pthread.h>
-#include <errno.h>
-#include <arpa/inet.h>
 #include <sys/socket.h>
-#include <linux/netlink.h>
-#include <linux/rtnetlink.h>
-#include "sock_events.h"
-#include "logger.h"
-#include <ifaddrs.h>
-#include <net/if.h>
 #include <time.h>
+#include <unistd.h>
 
 // Utile pour parser les attributs Netlink
 void parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len) {
@@ -36,9 +36,9 @@ static int open_netlink_socket(void) {
     struct sockaddr_nl addr;
     memset(&addr, 0, sizeof(addr));
     addr.nl_family = AF_NETLINK;
-  
-    addr.nl_groups = RTMGRP_IPV4_IFADDR | RTMGRP_IPV4_ROUTE
-                   | RTMGRP_IPV6_IFADDR | RTMGRP_IPV6_ROUTE;
+
+    addr.nl_groups = RTMGRP_IPV4_IFADDR | RTMGRP_IPV4_ROUTE |
+                     RTMGRP_IPV6_IFADDR | RTMGRP_IPV6_ROUTE;
 
     if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         LOG(ERROR, "Netlink: bind() failed: %s", strerror(errno));
@@ -54,7 +54,7 @@ void netlink_spy_init(const char *output_dir) {
     char path[512];
     snprintf(path, sizeof(path), "%s/netlink_events.jsonl", output_dir);
     g_netlink_fp = fopen(path, "w");
-    
+
     if (!g_netlink_fp) {
         LOG(ERROR, "netlink_spy: fopen(%s) failed: %s", path, strerror(errno));
     } else {
@@ -62,34 +62,44 @@ void netlink_spy_init(const char *output_dir) {
     }
 }
 
-static void write_netlink_jsonl(int msg_type, int if_index,
-                                int family, const char *ip)
-{
-    if (!g_netlink_fp) return;
+static void write_netlink_jsonl(int msg_type, int if_index, int family,
+                                const char *ip) {
+    if (!g_netlink_fp)
+        return;
 
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    uint64_t timestamp_usec = (uint64_t)ts.tv_sec * 1000000ULL
-                            + (uint64_t)ts.tv_nsec / 1000ULL;
+    uint64_t timestamp_usec =
+        (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)ts.tv_nsec / 1000ULL;
 
     const char *msg_str;
     switch (msg_type) {
-        case RTM_NEWADDR:   msg_str = "NEW_ADDR";   break;
-        case RTM_DELADDR:   msg_str = "DEL_ADDR";   break;
-        case RTM_NEWROUTE:  msg_str = "NEW_ROUTE";  break;
-        case RTM_DELROUTE:  msg_str = "DEL_ROUTE";  break;
-        default:            msg_str = "UNKNOWN";    break;
+    case RTM_NEWADDR:
+        msg_str = "NEW_ADDR";
+        break;
+    case RTM_DELADDR:
+        msg_str = "DEL_ADDR";
+        break;
+    case RTM_NEWROUTE:
+        msg_str = "NEW_ROUTE";
+        break;
+    case RTM_DELROUTE:
+        msg_str = "DEL_ROUTE";
+        break;
+    default:
+        msg_str = "UNKNOWN";
+        break;
     }
 
-    const char *family_str = (family == AF_INET)  ? "IPv4" :
-                             (family == AF_INET6) ? "IPv6" : "UNKNOWN";
+    const char *family_str = (family == AF_INET)    ? "IPv4"
+                             : (family == AF_INET6) ? "IPv6"
+                                                    : "UNKNOWN";
 
     fprintf(g_netlink_fp,
             "{\"type\":\"netlink\",\"timestamp_usec\":%lu,"
             "\"details\":{\"msg_type\":\"%s\","
             "\"if_index\":%d,\"family\":\"%s\",\"ip\":\"%s\"}}\n",
-            (unsigned long)timestamp_usec,
-            msg_str, if_index, family_str,
+            (unsigned long)timestamp_usec, msg_str, if_index, family_str,
             ip ? ip : "");
 
     fflush(g_netlink_fp);
@@ -105,20 +115,20 @@ static void dump_initial_interfaces(void) {
     }
 
     for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-        if (ifa->ifa_addr == NULL) continue;
+        if (ifa->ifa_addr == NULL)
+            continue;
 
         int family = ifa->ifa_addr->sa_family;
-        if (family != AF_INET && family != AF_INET6) continue;
+        if (family != AF_INET && family != AF_INET6)
+            continue;
 
-        int s = getnameinfo(
-            ifa->ifa_addr,
-            (family == AF_INET) ? sizeof(struct sockaddr_in)
-                                : sizeof(struct sockaddr_in6),
-            host, sizeof(host),
-            NULL, 0,
-            NI_NUMERICHOST);
+        int s = getnameinfo(ifa->ifa_addr,
+                            (family == AF_INET) ? sizeof(struct sockaddr_in)
+                                                : sizeof(struct sockaddr_in6),
+                            host, sizeof(host), NULL, 0, NI_NUMERICHOST);
 
-        if (s != 0) continue;
+        if (s != 0)
+            continue;
 
         int if_index = if_nametoindex(ifa->ifa_name);
 
@@ -130,7 +140,6 @@ static void dump_initial_interfaces(void) {
 
     freeifaddrs(ifaddr);
 }
-
 
 static void *netlink_monitor_thread(void *arg) {
     (void)arg;
@@ -146,46 +155,52 @@ static void *netlink_monitor_thread(void *arg) {
     dump_initial_interfaces();
 
     char buffer[8192];
-    struct iovec iov = { buffer, sizeof(buffer) };
+    struct iovec iov = {buffer, sizeof(buffer)};
     struct sockaddr_nl sa;
-    struct msghdr msg = { &sa, sizeof(sa), &iov, 1, NULL, 0, 0 };
+    struct msghdr msg = {&sa, sizeof(sa), &iov, 1, NULL, 0, 0};
 
     while (1) {
         ssize_t len = recvmsg(sock, &msg, 0);
-        if (len < 0) { sleep(1); continue; }
+        if (len < 0) {
+            sleep(1);
+            continue;
+        }
 
         struct nlmsghdr *nh = (struct nlmsghdr *)buffer;
         for (; NLMSG_OK(nh, len); nh = NLMSG_NEXT(nh, len)) {
 
-            if (nh->nlmsg_type == NLMSG_DONE)  break;
-            if (nh->nlmsg_type == NLMSG_ERROR) continue;
+            if (nh->nlmsg_type == NLMSG_DONE)
+                break;
+            if (nh->nlmsg_type == NLMSG_ERROR)
+                continue;
 
             // Gestion des ADRESSES
-            if (nh->nlmsg_type == RTM_NEWADDR || nh->nlmsg_type == RTM_DELADDR) {
+            if (nh->nlmsg_type == RTM_NEWADDR ||
+                nh->nlmsg_type == RTM_DELADDR) {
                 struct ifaddrmsg *ifa = (struct ifaddrmsg *)NLMSG_DATA(nh);
                 struct rtattr *tb[IFA_MAX + 1];
                 parse_rtattr(tb, IFA_MAX, IFA_RTA(ifa), IFA_PAYLOAD(nh));
 
                 char ip_str[INET6_ADDRSTRLEN] = {0};
                 if (tb[IFA_ADDRESS]) {
-                    inet_ntop(ifa->ifa_family,
-                              RTA_DATA(tb[IFA_ADDRESS]),
+                    inet_ntop(ifa->ifa_family, RTA_DATA(tb[IFA_ADDRESS]),
                               ip_str, sizeof(ip_str));
                 } else if (tb[IFA_LOCAL]) {
-                    inet_ntop(ifa->ifa_family,
-                              RTA_DATA(tb[IFA_LOCAL]),
-                              ip_str, sizeof(ip_str));
+                    inet_ntop(ifa->ifa_family, RTA_DATA(tb[IFA_LOCAL]), ip_str,
+                              sizeof(ip_str));
                 }
 
                 const char *action = (nh->nlmsg_type == RTM_NEWADDR)
-                                   ? "New Address" : "Address Removed";
+                                         ? "New Address"
+                                         : "Address Removed";
                 LOG(INFO, "NETLINK EVENT: %s (iface=%d ip=%s msg_type=%d)",
                     action, ifa->ifa_index, ip_str, nh->nlmsg_type);
 
-                write_netlink_jsonl(nh->nlmsg_type, ifa->ifa_index, ifa->ifa_family, ip_str);
+                write_netlink_jsonl(nh->nlmsg_type, ifa->ifa_index,
+                                    ifa->ifa_family, ip_str);
             }
 
-           // Gestion des ROUTES
+            // Gestion des ROUTES
             else if (nh->nlmsg_type == RTM_NEWROUTE ||
                      nh->nlmsg_type == RTM_DELROUTE) {
 
@@ -196,9 +211,8 @@ static void *netlink_monitor_thread(void *arg) {
                 char dst_str[INET6_ADDRSTRLEN] = {0};
 
                 if (tb[RTA_DST]) {
-                    inet_ntop(rtm->rtm_family,
-                              RTA_DATA(tb[RTA_DST]),
-                              dst_str, sizeof(dst_str));
+                    inet_ntop(rtm->rtm_family, RTA_DATA(tb[RTA_DST]), dst_str,
+                              sizeof(dst_str));
                 } else {
                     if (rtm->rtm_family == AF_INET)
                         strncpy(dst_str, "0.0.0.0", sizeof(dst_str));
@@ -208,20 +222,21 @@ static void *netlink_monitor_thread(void *arg) {
 
                 char gw_str[INET6_ADDRSTRLEN] = {0};
                 if (tb[RTA_GATEWAY]) {
-                    inet_ntop(rtm->rtm_family,
-                              RTA_DATA(tb[RTA_GATEWAY]),
+                    inet_ntop(rtm->rtm_family, RTA_DATA(tb[RTA_GATEWAY]),
                               gw_str, sizeof(gw_str));
                 }
 
                 const char *action = (nh->nlmsg_type == RTM_NEWROUTE)
-                                   ? "New Route" : "Route Removed";
+                                         ? "New Route"
+                                         : "Route Removed";
                 LOG(INFO,
                     "NETLINK EVENT: %s dst=%s/%d gw=%s family=%d msg_type=%d",
                     action, dst_str, rtm->rtm_dst_len,
-                    gw_str[0] ? gw_str : "(direct)",
-                    rtm->rtm_family, nh->nlmsg_type);
+                    gw_str[0] ? gw_str : "(direct)", rtm->rtm_family,
+                    nh->nlmsg_type);
 
-                write_netlink_jsonl(nh->nlmsg_type, 0, rtm->rtm_family, dst_str);
+                write_netlink_jsonl(nh->nlmsg_type, 0, rtm->rtm_family,
+                                    dst_str);
             }
         }
     }

@@ -20,48 +20,48 @@
 /* ── Lifecycle ───────────────────────────────────────────────────────────── */
 
 int ebpf_collector_init(const char *output_dir) {
-        (void)output_dir;
-        /* eBPF not supported on Android (kernel 4.19, no libbpf CO-RE). */
-        return 0;
+    (void)output_dir;
+    /* eBPF not supported on Android (kernel 4.19, no libbpf CO-RE). */
+    return 0;
 }
 
 int ebpf_collector_start(void) {
-        return 0;
+    return 0;
 }
 
 void ebpf_collector_stop(void) {
-        /* no-op */
+    /* no-op */
 }
 
 /* ── State ───────────────────────────────────────────────────────────────── */
 
 bool ebpf_collector_is_active(void) {
-        return false;
+    return false;
 }
 
 /* ── FD / sport lifecycle (called from libc_overrides.c) ────────────────── */
 
 void ebpf_collector_register_fd(int fd, uint64_t session_id) {
-        (void)fd;
-        (void)session_id;
+    (void)fd;
+    (void)session_id;
 }
 
 void ebpf_collector_unregister_fd(int fd) {
-        (void)fd;
+    (void)fd;
 }
 
 void ebpf_collector_dup_fd(int old_fd, int new_fd) {
-        (void)old_fd;
-        (void)new_fd;
+    (void)old_fd;
+    (void)new_fd;
 }
 
 void ebpf_collector_register_sport(uint16_t sport, uint64_t session_id) {
-        (void)sport;
-        (void)session_id;
+    (void)sport;
+    (void)session_id;
 }
 
 void ebpf_collector_unregister_sport(uint16_t sport) {
-        (void)sport;
+    (void)sport;
 }
 
 #endif /* __ANDROID__ */

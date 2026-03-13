@@ -7,9 +7,9 @@
 #include <fcntl.h>
 #include <linux/mroute.h>
 #include <linux/sockios.h>
+#include <linux/tcp.h>
 #include <linux/wireless.h>
 #include <net/ethernet.h>
-#include <linux/tcp.h>
 
 #ifndef SOL_TCP
 #define SOL_TCP 6
@@ -23,17 +23,17 @@
 #else
 #include <netinet/udp.h>
 #endif
-#include <unistd.h>
 #include "lib.h"
+#include <unistd.h>
 
 #define MEMBER_SIZE(type, member) sizeof(((type *)0)->member)
 
-#define ADD(constant) \
-        { constant, #constant }
+#define ADD(constant)                                                          \
+    { constant, #constant }
 
 typedef struct {
-        int cons;
-        const char str[40];
+    int cons;
+    const char str[40];
 } IntStrPair;
 
 #include "constants/errnos.h"
@@ -42,13 +42,13 @@ typedef struct {
 #include "constants/socket_domains.h"
 #include "constants/socket_types.h"
 #include "constants/sockopt_levels.h"
-#include "constants/sol_socket_options.h"
-#include "constants/sol_tcp_options.h"
-#include "constants/sol_udp_options.h"
 #include "constants/sol_ip_options.h"
 #include "constants/sol_ipv6_options.h"
 #include "constants/sol_packet_options.h"
 #include "constants/sol_raw_options.h"
+#include "constants/sol_socket_options.h"
+#include "constants/sol_tcp_options.h"
+#include "constants/sol_udp_options.h"
 
 char *alloc_errno_str(int err);
 char *alloc_fcntl_cmd_str(int cmd);

@@ -33,12 +33,9 @@ bool is_socket(int fd);
 bool is_inet_socket(int fd);
 bool is_tcp_socket(int fd);
 
-int append_string_to_file(const char *str, const char *path);
-
 int fill_tcp_info(int fd, struct tcp_info *info);
 int fill_timeval(struct timeval *timeval);
 
-time_t get_time_sec(void);
 unsigned long get_time_micros(void);
 
 long parse_long(const char *str);
@@ -60,7 +57,5 @@ int my_pthread_create(pthread_t *thread, const pthread_attr_t *attr,
 void *my_malloc(size_t size);
 void *my_calloc(size_t size);
 int my_fputs(const char *s, FILE *stream);
-
-bool is_dir_writable(const char *path);
 
 #endif

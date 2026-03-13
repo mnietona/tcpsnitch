@@ -8,6 +8,7 @@
 #ifndef __ANDROID__
 #include <execinfo.h>
 #endif
+#include "constants.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,10 +17,6 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include "constants.h"
-#include "init.h"
-#include "lib.h"
-#include "sock_events.h"
 
 #define ANSI_COLOR_WHITE "\x1b[37m"
 #define ANSI_COLOR_RED "\x1b[31m"
@@ -28,13 +25,13 @@
 #define ANSI_COLOR_RESET "\x1b[0m"
 
 typedef struct {
-        int year;
-        int mon;
-        int day;
-        int hour;
-        int min;
-        int sec;
-        int usec;
+    int year;
+    int mon;
+    int day;
+    int hour;
+    int min;
+    int sec;
+    int usec;
 } Timestamp;
 
 #ifndef __ANDROID__
@@ -57,115 +54,118 @@ static LogLevel file_lvl = WARN;
 /* Private functions */
 
 static const char *log_level_str(LogLevel lvl) {
-        static const char *strings[] = {"ALWAYS", "ERROR", "WARN", "INFO",
-                                        "DEBUG"};
-        assert(sizeof(strings) / sizeof(char *) == DEBUG + 1);
-        return strings[lvl];
+    static const char *strings[] = {"ALWAYS", "ERROR", "WARN", "INFO", "DEBUG"};
+    assert(sizeof(strings) / sizeof(char *) == DEBUG + 1);
+    return strings[lvl];
 }
 
 static void fill_timestamp(Timestamp *timestamp) {
-        time_t rawtime;
-        if ((rawtime = time(NULL)) == -1) return;
+    struct timespec ts;
+    struct tm tm_info;
 
-        struct tm timeinfo;
-        if (!localtime_r(&rawtime, &timeinfo)) return;
+    if (clock_gettime(CLOCK_REALTIME, &ts) < 0)
+        return;
 
-        timestamp->year = timeinfo.tm_year + 1900;
-        timestamp->mon = timeinfo.tm_mon + 1;
-        timestamp->day = timeinfo.tm_mday;
-        timestamp->hour = timeinfo.tm_hour;
-        timestamp->min = timeinfo.tm_min;
-        timestamp->sec = timeinfo.tm_sec;
+    // Convertit les secondes en structure temps humain (année, mois, jour...)
+    localtime_r(&ts.tv_sec, &tm_info);
 
-        struct timespec now;
-        if (clock_gettime(CLOCK_MONOTONIC, &now) < 0) return;
-        timestamp->usec = now.tv_nsec / 10000000;
+    timestamp->year = tm_info.tm_year + 1900;
+    timestamp->mon = tm_info.tm_mon + 1;
+    timestamp->day = tm_info.tm_mday;
+    timestamp->hour = tm_info.tm_hour;
+    timestamp->min = tm_info.tm_min;
+    timestamp->sec = tm_info.tm_sec;
+    timestamp->usec =
+        ts.tv_nsec / 1000000; // Conversion en millisecondes pour le log
 }
 
 static void log_to_file(LogLevel log_lvl, const char *formated_str,
                         const char *file, int line, FILE *stream) {
-        Timestamp ts;
-        fill_timestamp(&ts);
-        fprintf(stream,
-                "%02d.%02d.%02d-%02d:%02d:%02d.%02d - [%s] - %d (%s:%d) "
-                "%s\n",
-                ts.year, ts.mon, ts.day, ts.hour, ts.min, ts.sec, ts.usec,
-                log_level_str(log_lvl), getpid(), file, line, formated_str);
+    Timestamp ts = {0};
+    fill_timestamp(&ts);
+    fprintf(stream,
+            "%02d.%02d.%02d-%02d:%02d:%02d.%02d - [%s] - %d (%s:%d) "
+            "%s\n",
+            ts.year, ts.mon, ts.day, ts.hour, ts.min, ts.sec, ts.usec,
+            log_level_str(log_lvl), getpid(), file, line, formated_str);
 }
 
 #ifdef __ANDROID__
 static void log_to_logcat(LogLevel log_lvl, const char *str, const char *file,
                           int line) {
-        __android_log_print(android_log_priorities_map[log_lvl], "tcpsnitch",
-                            "(%s:%d) %s", file, line, str);
+    __android_log_print(android_log_priorities_map[log_lvl], "tcpsnitch",
+                        "(%s:%d) %s", file, line, str);
 }
 #else
 static void log_to_stderr(LogLevel log_lvl, const char *formated_str,
                           const char *file, int line) {
-        FILE *stream = (_stderr ? _stderr : stderr);
-        Timestamp ts;
-        fill_timestamp(&ts);
-        fprintf(stream,
-                "%s%02d.%02d.%02d-%02d:%02d:%02d.%02d - [%s] - %d (%s:%d) "
-                "%s%s\n",
-                colors[log_lvl], ts.year, ts.mon, ts.day, ts.hour, ts.min,
-                ts.sec, ts.usec, log_level_str(log_lvl), getpid(), file, line,
-                formated_str, ANSI_COLOR_RESET);
+    FILE *stream = stderr;
+    Timestamp ts = {0};
+    fill_timestamp(&ts);
+    fprintf(stream,
+            "%s%02d.%02d.%02d-%02d:%02d:%02d.%02d - [%s] - %d (%s:%d) "
+            "%s%s\n",
+            colors[log_lvl], ts.year, ts.mon, ts.day, ts.hour, ts.min, ts.sec,
+            ts.usec, log_level_str(log_lvl), getpid(), file, line, formated_str,
+            ANSI_COLOR_RESET);
 }
 #endif
 
 static void set_log_file(const char *path) {
-        if (log_file != NULL) fclose(log_file);
+    if (log_file != NULL)
+        fclose(log_file);
 
-        if (!path) {  // reset_tcpsnitch pass a NULL pointer.
-                log_file = NULL;
-                return;
-        }
+    if (!path) { // reset_tcpsnitch pass a NULL pointer.
+        log_file = NULL;
+        return;
+    }
 
-        log_file = fopen(path, "a");
-        if (!log_file) {
-                char str[1024];
-                snprintf(str, sizeof(str), "fopen() failed on %s. %s.", path,
-                         strerror(errno));
+    log_file = fopen(path, "a");
+    if (!log_file) {
+        char str[1024];
+        snprintf(str, sizeof(str), "fopen() failed on %s. %s.", path,
+                 strerror(errno));
 #ifdef __ANDROID__
-                log_to_logcat(ERROR, str, __FILE__, __LINE__);
+        log_to_logcat(ERROR, str, __FILE__, __LINE__);
 #else
-                log_to_stderr(ERROR, str, __FILE__, __LINE__);
+        log_to_stderr(ERROR, str, __FILE__, __LINE__);
 #endif
-        }
+    }
 }
 
 /* Public functions */
 
 void logger_init(const char *path, LogLevel _stdout_lvl, LogLevel _file_lvl) {
-        set_log_file(path);
-        stderr_lvl = _stdout_lvl;
-        file_lvl = _file_lvl;
+    set_log_file(path);
+    stderr_lvl = _stdout_lvl;
+    file_lvl = _file_lvl;
 }
 
 void logger(LogLevel log_lvl, const char *str, const char *file, int line) {
-        if (log_lvl <= stderr_lvl)
+    if (log_lvl <= stderr_lvl)
 #ifdef __ANDROID__
-                log_to_logcat(log_lvl, str, file, line);
+        log_to_logcat(log_lvl, str, file, line);
 #else
-                log_to_stderr(log_lvl, str, file, line);
+        log_to_stderr(log_lvl, str, file, line);
 #endif
-        if (log_file && log_lvl <= file_lvl)
-                log_to_file(log_lvl, str, file, line, log_file);
+    if (log_file && log_lvl <= file_lvl)
+        log_to_file(log_lvl, str, file, line, log_file);
 }
 
 #ifndef __ANDROID__
 void print_trace(void) {
-        void *array[10];
-        size_t size;
-        char **strings;
-        size_t i;
+    void *array[10];
+    size_t size;
+    char **strings;
+    size_t i;
 
-        size = backtrace(array, 10);
-        if (!(strings = backtrace_symbols(array, size))) return;
+    size = backtrace(array, 10);
+    if (!(strings = backtrace_symbols(array, size)))
+        return;
 
-        printf("Obtained %zd stack frames.\n", size);
-        for (i = 0; i < size; i++) fprintf(_stderr, "     %s\n", strings[i]);
-        free(strings);
+    printf("Obtained %zu stack frames.\n", size);
+    for (i = 0; i < size; i++)
+        fprintf(stderr, "     %s\n", strings[i]);
+    free(strings);
 }
 #endif

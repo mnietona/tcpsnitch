@@ -13,21 +13,21 @@ void logger(LogLevel lvl, const char *str, const char *file, int line);
 void print_trace(void);
 #endif
 
-#define LOG(lvl, format, args...)                             \
-        {                                                     \
-                char _buf[1024];                              \
-                snprintf(_buf, sizeof(_buf), format, ##args); \
-                logger(lvl, _buf, __FILE__, __LINE__);        \
-        }
+#define LOG(lvl, format, args...)                                              \
+    {                                                                          \
+        char _buf[1024];                                                       \
+        snprintf(_buf, sizeof(_buf), format, ##args);                          \
+        logger(lvl, _buf, __FILE__, __LINE__);                                 \
+    }
 
 #ifdef __ANDROID__
 #define LOG_FUNC_ERROR LOG(ERROR, "%s failed.", __func__)
 #else
-#define LOG_FUNC_ERROR                             \
-        {                                          \
-                LOG(ERROR, "%s failed.", __func__) \
-                print_trace();                     \
-        }
+#define LOG_FUNC_ERROR                                                         \
+    {                                                                          \
+        LOG(ERROR, "%s failed.", __func__)                                     \
+        print_trace();                                                         \
+    }
 #endif
 
 #define LOG_FUNC_WARN LOG(WARN, "%s", __func__)
