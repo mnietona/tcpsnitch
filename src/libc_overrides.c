@@ -196,11 +196,13 @@ EXPORT ssize_t sendto(int fd, const void *buf, size_t len, int flags,
     return ret;
 }
 
-#ifndef __ANDROID__
 override(recvfrom, ssize_t, 6, void *a, size_t b, int c, struct sockaddr *d,
          socklen_t *e);
 
-#endif
+/* ── sendmsg() / recvmsg() ───────────────────────────────────────────────── */
+override(sendmsg, ssize_t, 3, const struct msghdr *a, int b);
+override(recvmsg, ssize_t, 3, struct msghdr *a, int b);
+
 
 #ifndef __ANDROID__
 override(sendmmsg, int, 4, struct mmsghdr *a, unsigned int b, int c);

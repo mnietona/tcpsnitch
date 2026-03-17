@@ -3,23 +3,22 @@ set -o nounset
 # set -o xtrace
 
 ###############################################################################
-
-##############
-# Constants #
-############
+#                                 CONSTANTS                                   #
+###############################################################################
 
 readonly NAME="tcpsnitch"
-readonly VERSION=0.1
+readonly VERSION="0.1"
 readonly VERSION_STR="${NAME} version ${VERSION}"
+
 readonly I386_LIB="lib${NAME}.so.${VERSION}-i386"
 readonly AMD64_LIB="lib${NAME}.so.${VERSION}-x86-64"
 readonly ARM_LIB="lib${NAME}.so.${VERSION}-arm64"
-SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
-readonly SCRIPT_DIR
-readonly PROP_PREFIX="be.ucl.${NAME}"
+readonly DEPS_PATH="/usr/local/bin/${NAME}_deps"
+
+readonly SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+readonly CWD=$(pwd)
 readonly TOP_PID=$$
-CWD=$(pwd)
-readonly CWD
+readonly PROP_PREFIX="be.ucl.${NAME}"
 
 # Option default values
 OPT_A=0
@@ -38,16 +37,15 @@ META_OPTIONS_NAMES=(opt_b opt_f opt_u)
 META_OPTIONS_COUNT=${#META_OPTIONS_NAMES[@]}
 META_OPTIONS_VALS=("$OPT_B" "$OPT_F" "$OPT_U")
 
-###############################################################################
 
-############
-# Options #
-##########
+###############################################################################
+#                                  OPTIONS                                    #
+###############################################################################
 
 usage() {
     local _head="Usage: ${NAME}"
-    local _skip
-    _skip=$(printf "%0.s " $(seq 1 ${#_head}))
+    local _skip=$(printf "%0.s " $(seq 1 ${#_head}))
+    
     echo "${_head} [-acehv] [ -b <bytes> ] [ -d <dir>] [ -f <lvl> ]"
     echo "${_skip} [ -k <pkg> ] [ -l <lvl> ] [ -t <msec> ]"
     echo "${_skip} [ -u <usec> ] [ --version ] <app> [<args>]"
@@ -91,25 +89,23 @@ parse_options() {
                 ;;
             e) OPT_E=1 ;; 
             f) assert_int "${OPTARG}" "invalid -f argument" ; OPT_F=${OPTARG} ;;
-            h) usage ; exit 0 ;;
             k) tcpsnitch_android_teardown "$@" ; exit 0 ;;
             l) assert_int "${OPTARG}" "invalid -l argument" ; OPT_L=${OPTARG} ;;
             u) assert_int "${OPTARG}" "invalid -u argument" ; OPT_U=${OPTARG} ;;
             t) assert_int "${OPTARG}" "invalid -t argument" ; OPT_T=${OPTARG} ;;
-            v) OPT_V=$((OPT_V+1)) ;;
+            v) ((OPT_V++)) ;;
             \?) error "invalid option" ;;
         esac
     done
 }
 
+
+###############################################################################
+#                                  HELPERS                                    #
 ###############################################################################
 
-############
-# Helpers #
-##########
-
 error() {
-    declare msg="$1"
+    local msg="$1"
     echo "${NAME}: ${msg}."
     kill -s TERM $TOP_PID
 }
@@ -123,20 +119,19 @@ is_integer() {
 }
 
 assert_int() {
-    declare int="$1"
-    declare error_msg="$2"
+    local int="$1"
+    local error_msg="$2"
     if ! is_integer "$int"; then
         error "$error_msg"
     fi
 }
-
 
 cd_script_dir() {
     cd "$SCRIPT_DIR" || { echo "Could not cd to ${SCRIPT_DIR}"; exit 1; }
 }
 
 assert_lib_present() {
-    declare lib="$1"
+    local lib="$1"
     if [[ ! -f "$lib" ]]; then
         error "${lib} missing! Reinstall ${NAME}"
     fi
@@ -155,30 +150,27 @@ create_opt_d_dir() {
     fi
 }
 
+
+###############################################################################
+#                              ANDROID HELPERS                                #
 ###############################################################################
 
-####################
-# Android helpers #
-##################
-
 get_android_package() {
-    declare package_name="$1"
+    local package_name="$1"
 
     if [[ $# -ne 1 ]]; then
         error "missing package argument"
     fi
 
-    # Check that adb sees exactly 1 device
     if [[ $(adb devices | wc -l) -ne 3 ]]; then
         error "adb must see exactly 1 device"
     fi
 
-    declare prefix="package:"
-    declare match
+    local prefix="package:"
+    local match
     match=$(adb shell pm list packages | grep -m 1 -s "${package_name}" | tr -d '\r')
 
-    # Check that package exists
-    if [ -z "${match}" ]; then
+    if [[ -z "${match}" ]]; then
         error "invalid argument: package '${package_name}' not found"
     fi
 
@@ -196,48 +188,49 @@ kill_android_package() {
 }
 
 pull_trace_for_android_package() {
-    declare tracesdir="/data/data/${PACKAGE}/${NAME}"
-    # On utilise su -c encapsulé pour tester l'existence
+    local tracesdir="/data/data/${PACKAGE}/${NAME}"
+    local exists
+    
     exists=$(adb shell su -c "'test -d ${tracesdir} && echo 0 || echo 1'" | tr -d '\r')
     if [[ "$exists" -eq "1" ]] ; then
         error "no traces for '${PACKAGE}'"
     fi
 
     info "Pulling trace from Android device..."
-    # On copie les traces dans un dossier public avant de les pull
     adb shell su -c "cp -r $tracesdir /data/local/tmp/${NAME}_traces"
     adb shell su -c "chown -R shell:shell /data/local/tmp/${NAME}_traces"
     
     adb pull "/data/local/tmp/${NAME}_traces" "$OPT_D" 2>/dev/null
+    mv "$OPT_D/${NAME}_traces/"* "$OPT_D/" 2>/dev/null
+    rm -rf "$OPT_D/${NAME}_traces"
     
-    # On nettoie le téléphone
     adb shell su -c "rm -rf $tracesdir /data/local/tmp/${NAME}_traces"
     info "Trace saved in $OPT_D"
 }
 
+
+###############################################################################
+#                                  LINUX                                      #
 ###############################################################################
 
-##########
-# Linux #
-########
-
 tcpsnitch_linux() {
-    if [ -f "$cmd" ]; then
+    if [[ -f "$cmd" ]]; then
         cmd=$(readlink -f "$cmd")
         set -- "$cmd" "${@:2}"
 
-        if ! [[ -x "$cmd" ]]; then
+        if [[ ! -x "$cmd" ]]; then
             error "invalid cmd: '$cmd' is not executable"
         fi
     else
-        if ! which "$cmd" > /dev/null; then
+        if ! command -v "$cmd" > /dev/null; then
             error "invalid argument: '$cmd' is not in \$PATH"
         fi
     fi
 
     cd_script_dir
+    
     if [[ -f "enable_i386" ]] && [[ "$(cat enable_i386)" == "true" ]]; then
-    readonly ENABLE_I386=true
+        readonly ENABLE_I386=true
     else
         readonly ENABLE_I386=false
     fi
@@ -246,141 +239,135 @@ tcpsnitch_linux() {
         assert_lib_present "$I386_LIB"
     fi
     assert_lib_present "$AMD64_LIB"
-    LINUX_GIT_HASH=$(cat linux_git_hash)
-    readonly LINUX_GIT_HASH
-
-    # Default output directory if not specified
-    local BASE_DIR="${OPT_D:-/tmp/tcpsnitch_output_$(id -u)}"
     
-    # Directory name
+    readonly LINUX_GIT_HASH=$(cat linux_git_hash)
+
+    # Output directory setup
+    local BASE_DIR="${OPT_D:-/tmp/tcpsnitch_output}"
     IFS='/' read -ra array <<< "$1"
-    declare app=${array[-1]}
-
-    # Add timestamp 
-    local TIMESTAMP
-    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    local app=${array[-1]}
+    
+    local TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     local UNIQUE_NAME="${app}_${TIMESTAMP}"
-    
     local RUN_DIR="${BASE_DIR}/${UNIQUE_NAME}"
-    mkdir -p "$RUN_DIR"
+    local meta_dir="$RUN_DIR/meta"
     
-    declare meta_dir="$RUN_DIR/meta"
     mkdir -p "$meta_dir"
 
     # Write meta data
-    echo "$app" > "${meta_dir}/app"
-    echo "$@" > "${meta_dir}/cmd"
-    uname -r > "${meta_dir}/kernel"
-    uname -m > "${meta_dir}/machine"
-    sysctl net > "${meta_dir}/net" 2>/dev/null
-    uname -s > "${meta_dir}/os"
-    echo "$VERSION" > "${meta_dir}/version"
-    echo "$LINUX_GIT_HASH" > "${meta_dir}/git_hash"
+    echo "$app"          > "${meta_dir}/app"
+    echo "$@"            > "${meta_dir}/cmd"
+    uname -r             > "${meta_dir}/kernel"
+    uname -m             > "${meta_dir}/machine"
+    sysctl net           > "${meta_dir}/net" 2>/dev/null
+    uname -s             > "${meta_dir}/os"
+    echo "$VERSION"      > "${meta_dir}/version"
+    echo "$LINUX_GIT_HASH"> "${meta_dir}/git_hash"
+    
     if ! ip link | grep 'link/ether' | awk '{print $2}' | sha256sum | awk '{print $1}' > "${meta_dir}/host_id"; then
         ifconfig | grep 'HWaddr' | awk '{print $NF}' | sha256sum | awk '{print $1}' > "${meta_dir}/host_id"
     fi
-    "$1" --version 2>/dev/null >"${meta_dir}/app_version"
+    
+    "$1" --version 2>/dev/null > "${meta_dir}/app_version"
+    
     for i in $(seq 0 $((${META_OPTIONS_COUNT}-1))); do
-        echo "${META_OPTIONS_VALS[$i]}" > ${meta_dir}/${META_OPTIONS_NAMES[$i]}
+        echo "${META_OPTIONS_VALS[$i]}" > "${meta_dir}/${META_OPTIONS_NAMES[$i]}"
     done
 
+    # Build LD_PRELOAD
     local _preload_opt=""
-    [[ "$ENABLE_I386" == "true" ]] && _preload_opt+="$(readlink -f "$I386_LIB") "
+    if [[ "$ENABLE_I386" == "true" ]]; then
+        _preload_opt+="$(readlink -f "$I386_LIB") "
+    fi
     _preload_opt+=$(readlink -f "$AMD64_LIB")
 
     cd "$CWD" || exit 1
     exec 3>&1
     
+    # Environment variables execution block
     if [[ $OPT_V -gt 0 ]]; then
-        TCPSNITCH_OPT_B=$OPT_B \
-        TCPSNITCH_OPT_C=$OPT_C \
-        TCPSNITCH_OPT_D=$RUN_DIR \
-        TCPSNITCH_OPT_E=$OPT_E \
-        TCPSNITCH_OPT_F=$OPT_F \
-        TCPSNITCH_OPT_L=$OPT_L \
-        TCPSNITCH_OPT_T=$OPT_T \
-        TCPSNITCH_OPT_U=$OPT_U \
-        TCPSNITCH_OPT_V=$OPT_V \
+        TCPSNITCH_OPT_B=$OPT_B TCPSNITCH_OPT_C=$OPT_C TCPSNITCH_OPT_D=$RUN_DIR \
+        TCPSNITCH_OPT_E=$OPT_E TCPSNITCH_OPT_F=$OPT_F TCPSNITCH_OPT_L=$OPT_L \
+        TCPSNITCH_OPT_T=$OPT_T TCPSNITCH_OPT_U=$OPT_U TCPSNITCH_OPT_V=$OPT_V \
         LD_PRELOAD="${_preload_opt}" "$@" 1>&3
     else
-        TCPSNITCH_OPT_B=$OPT_B \
-        TCPSNITCH_OPT_C=$OPT_C \
-        TCPSNITCH_OPT_D=$RUN_DIR \
-        TCPSNITCH_OPT_E=$OPT_E \
-        TCPSNITCH_OPT_F=$OPT_F \
-        TCPSNITCH_OPT_L=$OPT_L \
-        TCPSNITCH_OPT_T=$OPT_T \
-        TCPSNITCH_OPT_U=$OPT_U \
-        TCPSNITCH_OPT_V=$OPT_V \
+        TCPSNITCH_OPT_B=$OPT_B TCPSNITCH_OPT_C=$OPT_C TCPSNITCH_OPT_D=$RUN_DIR \
+        TCPSNITCH_OPT_E=$OPT_E TCPSNITCH_OPT_F=$OPT_F TCPSNITCH_OPT_L=$OPT_L \
+        TCPSNITCH_OPT_T=$OPT_T TCPSNITCH_OPT_U=$OPT_U TCPSNITCH_OPT_V=$OPT_V \
         LD_PRELOAD="${_preload_opt}" "$@" > /dev/null 2>&1
     fi
 
     info "Trace saved in: ${RUN_DIR}"
 }
 
-###############################################################################
 
-############
-# Android #
-##########
+###############################################################################
+#                                 ANDROID                                     #
+###############################################################################
 
 tcpsnitch_android() {
     cd_script_dir
     assert_lib_present "$ARM_LIB"
-    ANDROID_GIT_HASH=$(cat android_git_hash)
-    readonly ANDROID_GIT_HASH
+    
+    readonly ANDROID_GIT_HASH=$(cat android_git_hash)
+    
     get_android_package "$cmd"
     kill_android_package
-    create_opt_d_dir
 
-    # Desactivate Selinux
+    # Output directory setup
+    local BASE_DIR="/tmp/tcpsnitch_output"
+    local TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    OPT_D="${BASE_DIR}/${cmd}_android_${TIMESTAMP}"
+    mkdir -p "$OPT_D"
+    chmod 777 "$OPT_D"
+
+    # Desactivate Selinux & Setup Logs Dir
     adb shell su -c setenforce 0
-
-    # Create logs dir
-    declare LOGS_DIR="/data/data/${PACKAGE}/${NAME}"
+    local LOGS_DIR="/data/data/${PACKAGE}/${NAME}"
     adb shell su -c rm -rf "$LOGS_DIR"
     adb shell su -c mkdir -m 777 -p "$LOGS_DIR"
 
-    # Write meta data (avec protection stricte des guillemets pour forcer le Root !)
-    declare meta_dir="$LOGS_DIR/meta"
+    # Write meta data
+    local meta_dir="$LOGS_DIR/meta"
     adb shell su -c "'mkdir -p $meta_dir'"
-    adb shell su -c "'echo ${PACKAGE} > ${meta_dir}/app'"
-    adb shell su -c "'echo ${PACKAGE} > ${meta_dir}/cmd'"
-    adb shell su -c "'uname -r > ${meta_dir}/kernel'"
-    adb shell su -c "'uname -m > ${meta_dir}/machine'"
-    adb shell su -c "'sysctl net > ${meta_dir}/net 2>/dev/null'"
-    adb shell su -c "'echo android > ${meta_dir}/os'"
-    adb shell su -c "'echo ${VERSION} > ${meta_dir}/version'"
+    adb shell su -c "'echo ${PACKAGE}        > ${meta_dir}/app'"
+    adb shell su -c "'echo ${PACKAGE}        > ${meta_dir}/cmd'"
+    adb shell su -c "'uname -r               > ${meta_dir}/kernel'"
+    adb shell su -c "'uname -m               > ${meta_dir}/machine'"
+    adb shell su -c "'sysctl net             > ${meta_dir}/net 2>/dev/null'"
+    adb shell su -c "'echo android           > ${meta_dir}/os'"
+    adb shell su -c "'echo ${VERSION}        > ${meta_dir}/version'"
     adb shell su -c "'echo ${ANDROID_GIT_HASH} > ${meta_dir}/git_hash'"
     adb shell su -c "'settings get secure android_id > ${meta_dir}/host_id'"
     adb shell su -c "'dumpsys package ${PACKAGE} 2>/dev/null | grep versionName > ${meta_dir}/app_version'"
+    
     for i in $(seq 0 $((${META_OPTIONS_COUNT}-1))); do
         adb shell su -c "'echo ${META_OPTIONS_VALS[$i]} > ${meta_dir}/${META_OPTIONS_NAMES[$i]}'"
     done
     
-    # On force les permissions 777 pour être certain que Firefox puisse écrire ses JSON
+    # Permissions & Upload lib
     adb shell su -c "chmod -R 777 $LOGS_DIR"
-
-    # Upload lib
-    LIBPATH="/data"
+    
+    local LIBPATH="/data"
     adb shell su -c chmod 777 /data
     adb shell su -c rm -f "${LIBPATH}/${ARM_LIB}"
     info "Uploading ${NAME} library to ${LIBPATH}/${ARM_LIB}"
+    
     adb push "${ARM_LIB}" "${LIBPATH}" 2>/dev/null
     adb shell su -c chmod 755 "${LIBPATH}/${ARM_LIB}"
 
     # Properties
-    adb shell setprop wrap."${PACKAGE:0:26}" LD_PRELOAD="${LIBPATH}/${ARM_LIB}"
-    adb shell setprop "${PROP_PREFIX}.opt_b" "$OPT_B"
-    adb shell setprop "${PROP_PREFIX}.opt_d" "$LOGS_DIR"
-    adb shell setprop "${PROP_PREFIX}.opt_f" "$OPT_F"
-    adb shell setprop "${PROP_PREFIX}.opt_l" "$OPT_L"
-    adb shell setprop "${PROP_PREFIX}.opt_t" "$OPT_T"
-    adb shell setprop "${PROP_PREFIX}.opt_u" "$OPT_U"
-    adb shell setprop "${PROP_PREFIX}.opt_v" "$OPT_V"
+    adb shell setprop wrap."${PACKAGE:0:26}"    LD_PRELOAD="${LIBPATH}/${ARM_LIB}"
+    adb shell setprop "${PROP_PREFIX}.opt_b"    "$OPT_B"
+    adb shell setprop "${PROP_PREFIX}.opt_d"    "$LOGS_DIR"
+    adb shell setprop "${PROP_PREFIX}.opt_f"    "$OPT_F"
+    adb shell setprop "${PROP_PREFIX}.opt_l"    "$OPT_L"
+    adb shell setprop "${PROP_PREFIX}.opt_t"    "$OPT_T"
+    adb shell setprop "${PROP_PREFIX}.opt_u"    "$OPT_U"
+    adb shell setprop "${PROP_PREFIX}.opt_v"    "$OPT_V"
 
     # Save properties for teardown (-k)
-    adb shell setprop "${PROP_PREFIX}.opt_d_k" "$OPT_D"
+    adb shell setprop "${PROP_PREFIX}.opt_d_k"  "$OPT_D"
 
     start_android_package
     info "Execute './${NAME} -k ${cmd}' to terminate the capture"
@@ -394,11 +381,10 @@ tcpsnitch_android_teardown() {
     pull_trace_for_android_package
 }
 
-###############################################################################
 
-################
-# MAIN SCRIPT #
-##############
+###############################################################################
+#                                MAIN SCRIPT                                  #
+###############################################################################
 
 trap "exit 1" TERM
 
