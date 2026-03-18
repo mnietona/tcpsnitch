@@ -1,6 +1,3 @@
-Voici le contenu au format Markdown (.md) :
-
-```markdown
 # tcpsnitch - Validation Suite
 
 This directory contains the functional test suite for `tcpsnitch`. It ensures that all intercepted syscalls (LD_PRELOAD) and kernel events (eBPF) are correctly captured and serialized.
