@@ -13,6 +13,7 @@ readonly VERSION_STR="${NAME} version ${VERSION}"
 readonly I386_LIB="lib${NAME}.so.${VERSION}-i386"
 readonly AMD64_LIB="lib${NAME}.so.${VERSION}-x86-64"
 readonly ARM_LIB="lib${NAME}.so.${VERSION}-arm64"
+readonly ARM_LIB_EBPF="lib${NAME}.so.${VERSION}-arm64-ebpf"
 readonly DEPS_PATH="/usr/local/bin/${NAME}_deps"
 
 readonly SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
@@ -133,7 +134,7 @@ cd_script_dir() {
 assert_lib_present() {
     local lib="$1"
     if [[ ! -f "$lib" ]]; then
-        error "${lib} missing! Reinstall ${NAME}"
+        error "${lib} missing! You must compile and install the target: sudo make install"
     fi
 }
 
@@ -203,6 +204,8 @@ pull_trace_for_android_package() {
     adb pull "/data/local/tmp/${NAME}_traces" "$OPT_D" 2>/dev/null
     mv "$OPT_D/${NAME}_traces/"* "$OPT_D/" 2>/dev/null
     rm -rf "$OPT_D/${NAME}_traces"
+
+    chmod -R 777 "$OPT_D" 2>/dev/null
     
     adb shell su -c "rm -rf $tracesdir /data/local/tmp/${NAME}_traces"
     info "Trace saved in $OPT_D"
@@ -254,6 +257,8 @@ tcpsnitch_linux() {
     
     mkdir -p "$meta_dir"
 
+    chmod 777 "$RUN_DIR" "$meta_dir"
+
     # Write meta data
     echo "$app"          > "${meta_dir}/app"
     echo "$@"            > "${meta_dir}/cmd"
@@ -297,6 +302,8 @@ tcpsnitch_linux() {
         LD_PRELOAD="${_preload_opt}" "$@" > /dev/null 2>&1
     fi
 
+    chmod -R 777 "$RUN_DIR" 2>/dev/null
+
     info "Trace saved in: ${RUN_DIR}"
 }
 
@@ -307,7 +314,6 @@ tcpsnitch_linux() {
 
 tcpsnitch_android() {
     cd_script_dir
-    assert_lib_present "$ARM_LIB"
     
     readonly ANDROID_GIT_HASH=$(cat android_git_hash)
     
@@ -350,14 +356,35 @@ tcpsnitch_android() {
     
     local LIBPATH="/data"
     adb shell su -c chmod 777 /data
-    adb shell su -c rm -f "${LIBPATH}/${ARM_LIB}"
-    info "Uploading ${NAME} library to ${LIBPATH}/${ARM_LIB}"
     
-    adb push "${ARM_LIB}" "${LIBPATH}" 2>/dev/null
-    adb shell su -c chmod 755 "${LIBPATH}/${ARM_LIB}"
+    # --- LE BLOC MODIFIÉ PAR TON COLLÈGUE (eBPF vs Standard) ---
+    if [[ $OPT_E -eq "1" ]]; then
+        assert_lib_present "$ARM_LIB_EBPF"
+        info "eBPF mode enabled — pushing eBPF lib"
+        adb shell su -c rm -f "${LIBPATH}/${ARM_LIB_EBPF}"
+        adb push "${ARM_LIB_EBPF}" "${LIBPATH}" 2>/dev/null
+        adb shell su -c "chmod 755 ${LIBPATH}/${ARM_LIB_EBPF}"
+        
+        # Pousser aussi l'objet noyau BPF
+        info "Pushing BPF kernel object"
+        adb push "${SCRIPT_DIR}/tcpsnitch_android.bpf.o" "/data/" 2>/dev/null
+        adb shell su -c "chmod 644 /data/tcpsnitch_android.bpf.o"
+        
+        # Injection de la lib eBPF
+        adb shell setprop wrap."${PACKAGE:0:26}" LD_PRELOAD="${LIBPATH}/${ARM_LIB_EBPF}"
+    else
+        assert_lib_present "$ARM_LIB"
+        info "Uploading ${NAME} library to ${LIBPATH}/${ARM_LIB}"
+        adb shell su -c rm -f "${LIBPATH}/${ARM_LIB}"
+        adb push "${ARM_LIB}" "${LIBPATH}" 2>/dev/null
+        adb shell su -c chmod 755 "${LIBPATH}/${ARM_LIB}"
+        
+        # Injection de la lib standard
+        adb shell setprop wrap."${PACKAGE:0:26}" LD_PRELOAD="${LIBPATH}/${ARM_LIB}"
+    fi
+    # ----------------------------------------------------------
 
     # Properties
-    adb shell setprop wrap."${PACKAGE:0:26}"    LD_PRELOAD="${LIBPATH}/${ARM_LIB}"
     adb shell setprop "${PROP_PREFIX}.opt_b"    "$OPT_B"
     adb shell setprop "${PROP_PREFIX}.opt_d"    "$LOGS_DIR"
     adb shell setprop "${PROP_PREFIX}.opt_f"    "$OPT_F"
@@ -365,12 +392,15 @@ tcpsnitch_android() {
     adb shell setprop "${PROP_PREFIX}.opt_t"    "$OPT_T"
     adb shell setprop "${PROP_PREFIX}.opt_u"    "$OPT_U"
     adb shell setprop "${PROP_PREFIX}.opt_v"    "$OPT_V"
+    adb shell setprop "${PROP_PREFIX}.opt_e"    "$OPT_E"
+    adb shell setprop "${PROP_PREFIX}.opt_b"    "$OPT_B"
+    adb shell setprop "${PROP_PREFIX}.opt_d"    "$LOGS_DIR"
 
     # Save properties for teardown (-k)
     adb shell setprop "${PROP_PREFIX}.opt_d_k"  "$OPT_D"
 
     start_android_package
-    info "Execute './${NAME} -k ${cmd}' to terminate the capture"
+    info "Execute '${NAME} -k ${cmd}' to terminate the capture"
 }
 
 tcpsnitch_android_teardown() {

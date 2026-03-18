@@ -87,9 +87,11 @@ static void get_options(void) {
 #else
     conf_opt_c = get_long_opt_or_defaultval(OPT_C, 1);
     conf_opt_d = alloc_str_opt(OPT_D);
-    conf_opt_e = get_long_opt_or_defaultval(OPT_E, 0);
+    
     conf_opt_u = get_long_opt_or_defaultval(OPT_U, 100000);
 #endif
+    conf_opt_e = get_long_opt_or_defaultval(OPT_E, 0);
+    LOG(INFO, "DEBUG opt_e raw: %ld (property '%s')", conf_opt_e, OPT_E);
     conf_opt_f = get_long_opt_or_defaultval(OPT_F, WARN);
     conf_opt_l = get_long_opt_or_defaultval(OPT_L, WARN);
     conf_opt_t = get_long_opt_or_defaultval(OPT_T, 1000);
@@ -103,6 +105,7 @@ static void log_options(void) {
 #endif
     LOG(INFO, "Option d: %s", conf_opt_d ? conf_opt_d : "(null)");
     LOG(INFO, "Option f: %ld.", conf_opt_f);
+    LOG(INFO, "Option e: %ld.", conf_opt_e);
     LOG(INFO, "Option l: %ld.", conf_opt_l);
     LOG(INFO, "Option t: %ld.", conf_opt_t);
     LOG(INFO, "Option u: %ld.", conf_opt_u);
@@ -146,19 +149,14 @@ static void start_ebpf_collector(void) {
         LOG(INFO, "eBPF disabled (use -e flag with sudo to enable).");
         return;
     }
-#ifdef __ANDROID__
-    LOG(INFO, "eBPF collector disabled on Android.");
-    return;
-#else
-    if (!logs_dir_path)
+if (!logs_dir_path)
         return;
 
     int ret = ebpf_collector_init(logs_dir_path);
     if (ret != 0) {
         LOG(WARN,
             "eBPF collector init failed (ret=%d). "
-            "Continuing in LD_PRELOAD-only mode. "
-            "Check kernel >= 5.10 and CAP_BPF / root.",
+            "Continuing in LD_PRELOAD-only mode.",
             ret);
         return;
     }
@@ -172,7 +170,6 @@ static void start_ebpf_collector(void) {
 
     LOG(INFO, "eBPF collector active. Events → %s/ebpf_events.jsonl",
         logs_dir_path);
-#endif
 }
 
 static void signal_handler(int signum) {
@@ -215,8 +212,13 @@ void init_tcpsnitch(void) {
 
     if (!conf_opt_d) {
 #ifdef __ANDROID__
-        LOG(ERROR, "conf_opt_d is NULL on Android, aborting.");
-        goto exit_fail;
+        conf_opt_d = alloc_android_opt_d();
+        if (!conf_opt_d) {
+            LOG(ERROR, "conf_opt_d is NULL on Android, aborting.");
+            goto exit_fail;
+        }
+        /* Créer le dossier s'il n'existe pas */
+        mkdir(conf_opt_d, 0777);
 #else
         conf_opt_d = strdup(".");
 #endif
