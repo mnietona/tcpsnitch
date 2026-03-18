@@ -1,16 +1,3 @@
-/*
- * ebpf_collector_android.c
- *
- * Stub no-op implementation of the eBPF collector for Android.
- *
- * Rationale: the Pixel 4a runs kernel 4.19 which does NOT support
- * libbpf CO-RE (BPF Type Format requires kernel >= 5.8).
- * All functions are safe no-ops — the rest of tcpsnitch continues
- * to function normally (LD_PRELOAD + Netlink layers are unaffected).
- *
- * Compiled instead of ebpf_collector.c when building the Android target.
- */
-
 #ifdef __ANDROID__
 
 #include "ebpf_collector.h"
