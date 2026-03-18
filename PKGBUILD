@@ -1,28 +1,39 @@
-# Maintainer: Your Name <youremail@domain.com>
+# Maintainer: Gregory Van den Schrieck <gregory.vds@gmail.com>
+# Contributor: Your Name <youremail@domain.com>
+
 pkgname=tcpsnitch-git
-pkgver=0
+pkgver=r152.a1b2c3d
 pkgrel=1
-pkgdesc="A tracing tool designed to investigate the interactions between an application, the TCP/IP stack and the network."
-arch=('i686' 'x86_64')
+pkgdesc="A network tracing tool using LD_PRELOAD and eBPF to investigate TCP/IP stack interactions."
+arch=('x86_64' 'i686' 'aarch64')
 url="https://github.com/GregoryVds/tcpsnitch"
-license=('unknown')
-depends=('jansson' 'libpcap' 'libbpf')
-makedepends=('git' 'clang' 'libbpf' 'bpftool' 'linux-headers')
-source=('tcpsnitch-git::git+https://github.com/GregoryVds/tcpsnitch.git') # mettre la branch
+license=('GPL3')
+
+depends=('jansson' 'libpcap' 'libbpf' 'libelf')
+
+makedepends=('git' 'clang' 'libbpf' 'bpftool' 'linux-headers' 'cmake')
+
+# change main to BRANCH_NAME if the default branch is not main
+source=("${pkgname}::git+${url}.git#branch=main")
 md5sums=('SKIP')
 
 pkgver() {
-    cd "$srcdir/${pkgname%-git}"
+    cd "$srcdir/${pkgname}"
     printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)" 
 }
 
+prepare() {
+    cd "$srcdir/${pkgname}"
+    chmod +x configure
+}
+
 build() {
-    cd "$srcdir/${pkgname%-git}"
+    cd "$srcdir/${pkgname}"
     ./configure
     make
 }
 
 package() {
-    cd "$srcdir/${pkgname%-git}"
-    make DESTDIR="$pkgdir/" install
+    cd "$srcdir/${pkgname}"
+    make DESTDIR="$pkgdir" install
 }
