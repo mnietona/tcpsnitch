@@ -583,11 +583,11 @@ void free_and_dump_socket(int fd) {
     /* 1. Capturer l'état avant de libérer le verrou */                      \
     bool dump_tcp_info =                                                       \
         should_dump_tcp_info(sock) && ev_type_cons != SOCK_EV_TCP_INFO;        \
-    /* 2. Libérer le verrou immédiatement */                                 \
-    ra_unlock_elem(fd);                                                        \
-    /* 3. Traiter l'événement (Sortie et Stockage) */                        \
+    /* 2. Output + push AVANT unlock pour éviter la race condition */        \
     output_event((SockEvent *)ev);                                             \
     push_event(sock, (SockEvent *)ev);                                         \
+    /* 3. Libérer le verrou */                                               \
+    ra_unlock_elem(fd);                                                        \
     /* 4. Action secondaire post-verrou */                                     \
     if (dump_tcp_info)                                                         \
         tcp_dump_tcp_info(fd);
@@ -736,7 +736,7 @@ void sock_ev_getsockopt(int fd, int ret, int err, int level, int optname,
 
     fill_sockopt(&ev->sockopt, level, optname, optval, *optlen, true, fd);
 
-    SOCK_EV_POSTLUDE(SOCK_EV_SETSOCKOPT);
+    SOCK_EV_POSTLUDE(SOCK_EV_GETSOCKOPT)
 }
 
 void sock_ev_setsockopt(int fd, int ret, int err, int level, int optname,
@@ -1008,7 +1008,7 @@ void sock_ev_sendfile(int fd, int ret, int err, int in_fd, off_t *offset,
     UNUSED(offset);
 
     ev->bytes = bytes;
-    sock->bytes_received += ev->bytes;
+    sock->bytes_sent += ev->bytes;
 
     SOCK_EV_POSTLUDE(SOCK_EV_SENDFILE);
 }
@@ -1215,7 +1215,6 @@ void sock_ev_tcp_info(int fd, int ret, int err, struct tcp_info *info) {
     SOCK_EV_POSTLUDE(SOCK_EV_TCP_INFO);
 }
 
-// TODO : AJOUTER DES TEST POUR ETRE SUR DE BIEN CAPTURER LES DONNEES
 void sock_ev_splice(int ret, int err, int fd_in, loff_t *off_in, int fd_out,
                     loff_t *off_out, size_t len, unsigned int flags) {
     UNUSED(off_in);

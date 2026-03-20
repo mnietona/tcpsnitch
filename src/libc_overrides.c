@@ -287,17 +287,23 @@ EXPORT int close_range(unsigned int fd, unsigned int max_fd, int flags) {
     if (!orig_close_range)
         orig_close_range = (close_range_type)dlsym(RTLD_NEXT, "close_range");
 
+    // FIX: close_range peut ne pas exister sur kernel < 5.9
+    if (!orig_close_range)
+        return 0;
+
 #ifdef CLOSE_RANGE_CLOEXEC
-    /* CLOSE_RANGE_CLOEXEC just sets the flag, FDs remain open. No BPF updates
-     * needed. */
     if (flags & CLOSE_RANGE_CLOEXEC)
         return orig_close_range(fd, max_fd, flags);
 #endif
 
-    /* Cap maximum range iteration to 4096 to prevent excessive loops. */
     unsigned int cap = (max_fd > 4096) ? 4096 : max_fd;
 
-    /* Step 1: Unregister from eBPF first (prevent FD recycling bug) */
+    // FIX: si fd > cap, aucun FD à traiter dans la plage
+    if (fd > cap)
+        return orig_close_range(fd, max_fd, flags);
+
+    unsigned int count = cap - fd + 1;  // FIX: calcul séparé, pas d'underflow
+
     if (ebpf_collector_is_active()) {
         for (unsigned int i = fd; i <= cap; i++) {
             if (is_inet_socket((int)i))
@@ -305,16 +311,17 @@ EXPORT int close_range(unsigned int fd, unsigned int max_fd, int flags) {
         }
     }
 
-    /* Step 2: Snapshot INET status before closing */
-    bool *is_inet = calloc(cap - fd + 1, sizeof(bool));
+    // FIX: vérifier que calloc réussit
+    bool *is_inet = calloc(count, sizeof(bool));
+    if (!is_inet)
+        return orig_close_range(fd, max_fd, flags);
+
     for (unsigned int i = fd; i <= cap; i++)
         is_inet[i - fd] = is_inet_socket((int)i);
 
-    /* Step 3: Real syscall */
     int ret = orig_close_range(fd, max_fd, flags);
     int err = errno;
 
-    /* Step 4: Log ev_close for each INET socket */
     for (unsigned int i = fd; i <= cap; i++) {
         if (is_inet[i - fd])
             sock_ev_close((int)i, ret, err);

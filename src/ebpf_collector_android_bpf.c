@@ -625,9 +625,5 @@ void ebpf_collector_unregister_sport(uint16_t sport)
     sys_bpf(BPF_MAP_DELETE_ELEM, &attr, sizeof(attr));
 }
 
-void ebpf_collector_unregister_sport_by_fd(int fd)
-{
-    (void)fd;
-}
 
 #endif /* __ANDROID__ && TCPSNITCH_EBPF_ANDROID */

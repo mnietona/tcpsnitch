@@ -149,10 +149,10 @@ error_out:
 char *alloc_android_opt_d(void) {
     char *app_name = alloc_app_name();
     const char *prefix = "/data/data/";
-    const char *sufix = "/tcpsnitch";
-    int n = strlen(prefix) + strlen(app_name) + strlen(sufix) + 1;
+    const char *suffix = "/tcpsnitch";
+    int n = strlen(prefix) + strlen(app_name) + strlen(suffix) + 1;
     char *opt_d = (char *)my_malloc(sizeof(char) * n);
-    sprintf(opt_d, "%s%s%s", prefix, app_name, sufix);
+    sprintf(opt_d, "%s%s%s", prefix, app_name, suffix);
     free(app_name);
     return opt_d;
 }

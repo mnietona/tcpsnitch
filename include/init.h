@@ -35,7 +35,6 @@ extern char *conf_opt_d;
 extern long conf_opt_e;
 extern long conf_opt_f;
 extern long conf_opt_l;
-extern long conf_opt_p;
 extern long conf_opt_u;
 extern long conf_opt_t;
 extern long conf_opt_v;

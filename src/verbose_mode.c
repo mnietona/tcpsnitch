@@ -161,7 +161,7 @@ static void output_ev_readv(const SockEvReadv *ev) {
 }
 
 static void output_ev_ioctl(const SockEvIoctl *ev) {
-    OUTPUT_EV("iotctl()=%d", ev->super.return_value);
+    OUTPUT_EV("ioctl()=%d", ev->super.return_value);
 }
 
 static void output_ev_sendfile(const SockEvSendfile *ev) {

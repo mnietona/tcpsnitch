@@ -1,5 +1,5 @@
-#ifndef RESIABLZE_ARRAY_H
-#define RESIABLZE_ARRAY_H
+#ifndef RESIZABLE_ARRAY_H
+#define RESIZABLE_ARRAY_H
 
 #include "sock_events.h"
 
@@ -18,4 +18,4 @@ int ra_get_size(void);
 
 void ra_free(void); // Free state.
 
-#endif
+#endif /* RESIZABLE_ARRAY_H */

@@ -15,6 +15,7 @@
 #include "lib.h"
 #include "logger.h"
 #include "netlink_spy.h"
+#include "resizable_array.h"
 #include "sock_events.h"
 #include "string_builders.h"
 
@@ -69,6 +70,7 @@ static void tcpsnitch_free(void) {
         fclose(_stderr);
 #endif
     pthread_mutex_destroy(&init_mutex);
+    ra_free();  // FIX: libérer le tableau des sockets
 }
 
 #ifndef __ANDROID__
@@ -80,7 +82,6 @@ static void open_std_streams(void) {
 
 static void get_options(void) {
     conf_opt_b = get_long_opt_or_defaultval(OPT_B, 4096);
-    conf_opt_p = 0;
 #ifdef __ANDROID__
     conf_opt_d = alloc_android_opt_d();
     conf_opt_u = get_long_opt_or_defaultval(OPT_U, 0);
@@ -175,7 +176,7 @@ if (!logs_dir_path)
 static void signal_handler(int signum) {
 
     const char *msg = "[tcpsnitch] Signal received, flushing data...\n";
-    write(STDERR_FD, msg, 47);
+    write(STDERR_FD, msg, 46); // avant 47
 
     dump_all_sock_events();
     ebpf_collector_stop();
@@ -239,6 +240,10 @@ void init_tcpsnitch(void) {
 
     if (conf_opt_t)
         start_json_dumper_thread();
+
+    // FIX: installer les handlers de signaux
+    signal(SIGTERM, signal_handler);
+    signal(SIGINT,  signal_handler);
 
     goto exit;
 
