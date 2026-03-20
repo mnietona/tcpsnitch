@@ -206,10 +206,10 @@ int ebpf_collector_init(const char *output_dir) {
         goto err_destroy_skel;
     }
 
-    g_collector.sport_map_fd =
-        bpf_map__fd(g_collector.skel->maps.sport_to_session);
+    g_collector.sport_map_fd = bpf_map__fd(g_collector.skel->maps.sport_to_session);
     if (g_collector.sport_map_fd < 0) {
         LOG(ERROR, "ebpf_collector: could not get sport_to_session fd.");
+        ret = -1; 
         goto err_destroy_skel;
     }
 

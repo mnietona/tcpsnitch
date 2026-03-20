@@ -537,6 +537,7 @@ void log_event(LogLevel lvl, int ev_type_cons, int fd, int con_id) {
 
 void free_and_dump_socket(int fd) {
     Socket *sock = ra_remove_elem(fd);
+    if (!sock) return;
 #ifndef __ANDROID__
     if (sock->capture_switch != NULL)
         stop_capture(sock->capture_switch, sock->rtt * 2);
@@ -754,10 +755,10 @@ void sock_ev_send(int fd, int ret, int err, const void *buf, size_t bytes,
     // Inst. local vars Socket *sock & SockEvSend *ev
     SOCK_EV_PRELUDE(SOCK_EV_SEND, SockEvSend);
     UNUSED(buf);
-
-    ev->bytes = bytes;
+    
     ev->flags = flags;
-    sock->bytes_sent += bytes;
+    ev->bytes = bytes;
+    if (ret > 0) sock->bytes_sent += ret;
 
     SOCK_EV_POSTLUDE(SOCK_EV_SEND);
 }
@@ -770,7 +771,7 @@ void sock_ev_recv(int fd, int ret, int err, void *buf, size_t bytes,
 
     ev->bytes = bytes;
     ev->flags = flags;
-    sock->bytes_received += bytes;
+    if (ret > 0) sock->bytes_received += ret;
 
     SOCK_EV_POSTLUDE(SOCK_EV_RECV);
 }
@@ -783,7 +784,7 @@ void sock_ev_sendto(int fd, int ret, int err, const void *buf, size_t bytes,
 
     ev->bytes = bytes;
     ev->flags = flags;
-    sock->bytes_sent += bytes;
+    if (ret > 0) sock->bytes_sent += ret;
     if (addr)
         fill_addr(&(ev->addr), addr, len);
 
@@ -798,7 +799,7 @@ void sock_ev_recvfrom(int fd, int ret, int err, void *buf, size_t bytes,
 
     ev->bytes = bytes;
     ev->flags = flags;
-    sock->bytes_received += bytes;
+    if (ret > 0) sock->bytes_received += ret;
     if (ret != -1 && addr)
         fill_addr(&(ev->addr), addr, *len);
 
@@ -812,7 +813,7 @@ void sock_ev_sendmsg(int fd, int ret, int err, const struct msghdr *msg,
 
     ev->bytes = fill_msghdr(&ev->msghdr, msg);
     ev->flags = flags;
-    sock->bytes_sent += ev->bytes;
+    if (ret > 0) sock->bytes_sent += ret;
 
     SOCK_EV_POSTLUDE(SOCK_EV_SENDMSG);
 }
@@ -824,7 +825,7 @@ void sock_ev_recvmsg(int fd, int ret, int err, const struct msghdr *msg,
 
     ev->bytes = fill_msghdr(&ev->msghdr, msg);
     ev->flags = flags;
-    sock->bytes_received += ev->bytes;
+    if (ret > 0) sock->bytes_received += ret;
 
     SOCK_EV_POSTLUDE(SOCK_EV_RECVMSG);
 }
@@ -909,7 +910,7 @@ void sock_ev_write(int fd, int ret, int err, const void *buf, size_t bytes) {
     UNUSED(buf);
 
     ev->bytes = bytes;
-    sock->bytes_sent += bytes;
+    if (ret > 0) sock->bytes_sent += ret;
 
     SOCK_EV_POSTLUDE(SOCK_EV_WRITE);
 }
@@ -920,7 +921,7 @@ void sock_ev_read(int fd, int ret, int err, void *buf, size_t bytes) {
     UNUSED(buf);
 
     ev->bytes = bytes;
-    sock->bytes_received += bytes;
+    if (ret > 0) sock->bytes_received += ret;
 
     SOCK_EV_POSTLUDE(SOCK_EV_READ);
 }
@@ -971,7 +972,7 @@ void sock_ev_writev(int fd, int ret, int err, const struct iovec *iovec,
     SOCK_EV_PRELUDE(SOCK_EV_WRITEV, SockEvWritev);
 
     ev->bytes = fill_iovec(&ev->iovec, iovec, iovec_count);
-    sock->bytes_sent += ev->bytes;
+    if (ret > 0) sock->bytes_sent += ret;
 
     SOCK_EV_POSTLUDE(SOCK_EV_WRITEV);
 }
@@ -982,7 +983,7 @@ void sock_ev_readv(int fd, int ret, int err, const struct iovec *iovec,
     SOCK_EV_PRELUDE(SOCK_EV_READV, SockEvReadv);
 
     ev->bytes = fill_iovec(&ev->iovec, iovec, iovec_count);
-    sock->bytes_received += ev->bytes;
+    if (ret > 0) sock->bytes_received += ret;
 
     SOCK_EV_POSTLUDE(SOCK_EV_READV);
 }
