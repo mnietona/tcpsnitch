@@ -8,5 +8,5 @@ PLOTLY_THEME = dict(
 
 SEND_TYPES  = ["send", "sendto", "sendmsg", "sendmmsg", "write", "writev", "sendfile"]
 RECV_TYPES  = ["recv", "recvfrom", "recvmsg", "recvmmsg", "read", "readv"]
-ASYNC_TYPES = ["poll", "select", "epoll_wait", "epoll_pwait", "epoll_ctl", "epoll_create"]
+ASYNC_TYPES = ["poll", "ppoll", "select", "pselect", "epoll_wait", "epoll_pwait", "epoll_ctl", "epoll_create"]
 CTRL_TYPES  = ["ioctl", "fcntl", "setsockopt", "getsockopt"]

@@ -7,9 +7,9 @@ import os
 # --- Internal Imports ---
 from config import PLOTLY_THEME, SEND_TYPES, RECV_TYPES, ASYNC_TYPES, CTRL_TYPES
 from loaders import load_session, load_ebpf, load_netlink, load_meta, find_sessions
-from tabs import tab_overview
+from tabs import tab_overview, tab_sockets, tab_send_recv, tab_cwnd_rtt, tab_async, tab_ebpf, tab_netlink, tab_control, tab_global
 
-st.set_page_config(page_title="Tcpsnitch", page_icon="🔬", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="TCPSnitch Analyzer", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
 <style>
@@ -41,7 +41,7 @@ div[data-testid="metric-container"] div[data-testid="stMetricValue"] { font-fami
 
 # ── Sidebar ─────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🔬 Tcpsnitch")
+    st.markdown("## TCPSnitch")
     st.markdown("<p style='color:#8b949e;font-size:0.78rem;'>Network Stack Analyzer</p>", unsafe_allow_html=True)
     st.divider()
 
@@ -71,33 +71,48 @@ with st.sidebar:
 with st.spinner("Loading traces and synchronizing clocks..."):
     all_events  = load_session(selected_session)
     ebpf_events = load_ebpf(selected_session)
-    netlink_events = load_netlink(selected_session) 
+    netlink_events = load_netlink(selected_session)
     meta_data = load_meta(selected_session)
 
 df = pd.DataFrame(all_events) if all_events else pd.DataFrame()
 
-# 1. Global T0 Discovery
-t0_candidates = []
+# 1. Global T0 Discovery — EPOCH ONLY (LD_PRELOAD + Netlink, both use epoch microseconds)
+# IMPORTANT: eBPF uses monotonic nanoseconds (since boot, ~200,000s) which MUST NOT be mixed
+# with epoch timestamps (~1,775,000,000s). Mixing them breaks all timing.
+t0_candidates_epoch = []
 if not df.empty and "timestamp_usec" in df.columns:
     df["timestamp_usec"] = pd.to_numeric(df["timestamp_usec"], errors="coerce")
-    t0_candidates.append(df["timestamp_usec"].min())
-if ebpf_events:
-    ebpf_min_ns = min(e.get("timestamp_ns", float('inf')) for e in ebpf_events if "timestamp_ns" in e)
-    if ebpf_min_ns != float('inf'): t0_candidates.append(ebpf_min_ns / 1000.0)
+    valid_us = df["timestamp_usec"].dropna()
+    if not valid_us.empty:
+        t0_candidates_epoch.append(valid_us.min())
 if netlink_events:
-    nl_min_us = min(e.get("timestamp_usec", float('inf')) for e in netlink_events if "timestamp_usec" in e)
-    if nl_min_us != float('inf'): t0_candidates.append(nl_min_us)
+    nl_min_us = min(
+        (e.get("timestamp_usec", float('inf')) for e in netlink_events if "timestamp_usec" in e),
+        default=float('inf')
+    )
+    if nl_min_us != float('inf'):
+        t0_candidates_epoch.append(nl_min_us)
 
-global_t0_usec = min(t0_candidates) if t0_candidates else 0
+global_t0_usec = min(t0_candidates_epoch) if t0_candidates_epoch else 0
 
-# 2. CENTRAL SYNCHRONIZATION (Convert all to 't_ms' based on T0)
+# 2. eBPF has its own monotonic clock — compute its own t0 separately
+ebpf_t0_ns = None
+if ebpf_events:
+    ns_vals = [e["timestamp_ns"] for e in ebpf_events if "timestamp_ns" in e]
+    if ns_vals:
+        ebpf_t0_ns = min(ns_vals)
+
+# 3. CENTRAL SYNCHRONIZATION — all events converted to t_ms relative to their respective t0
+# LD_PRELOAD: epoch usec → ms relative to epoch t0
 if not df.empty:
     df["t_ms"] = (df["timestamp_usec"] - global_t0_usec) / 1000.0
 
+# eBPF: monotonic ns → ms relative to eBPF monotonic t0 (self-consistent timeline)
 for ev in ebpf_events:
-    if "timestamp_ns" in ev:
-        ev["t_ms"] = ((ev["timestamp_ns"] / 1000.0) - global_t0_usec) / 1000.0
+    if "timestamp_ns" in ev and ebpf_t0_ns is not None:
+        ev["t_ms"] = (ev["timestamp_ns"] - ebpf_t0_ns) / 1.0e6
 
+# Netlink: epoch usec → ms relative to epoch t0 (same clock as LD_PRELOAD)
 for ev in netlink_events:
     if "timestamp_usec" in ev:
         ev["t_ms"] = (ev["timestamp_usec"] - global_t0_usec) / 1000.0
@@ -120,43 +135,48 @@ st.markdown(f"""
   <div style="margin-top:6px;">
     <span class="event-tag tag-tcp">LD_PRELOAD {len(all_events):,} events</span>
     <span class="event-tag tag-ebpf">eBPF {len(ebpf_events):,} events · {n_retrans} retransmits</span>
-    <span class="event-tag tag-ok">Netlink {len(netlink_events):,} événements</span>
+    <span class="event-tag tag-ok">Netlink {len(netlink_events):,} events</span>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
 # ── Navigation (Tabs) ────────────────────────────────────────────────────────
 tabs = st.tabs([
-    "📊  Overview",
-    "🔌  Sockets",
-    "📤  Send & Receive",
-    "📈  CWND & RTT",
-    "🔄  Async I/O",
-    "🧠  eBPF",
-    "🌐  Netlink",
-    "⚙️  Control Plane",
+    "Overview",
+    "Sockets",
+    "Send / Recv",
+    "CWND / RTT",
+    "Async I/O",
+    "eBPF",
+    "Netlink",
+    "Control",
+    "Cross-Session",
 ])
 
 with tabs[0]:
-    tab_overview.render(df, all_events, type_counts, n_retrans, meta_data)
+    tab_overview.render(df, all_events, type_counts, n_retrans, meta_data,
+                        ebpf_events=ebpf_events, netlink_events=netlink_events)
 
 with tabs[1]:
-    st.info("Tab 1 (Sockets) logic under construction. File: tabs/tab_sockets.py")
+    tab_sockets.render(df, all_events)
 
 with tabs[2]:
-    st.info("Tab 2 (Send & Receive) logic under construction. File: tabs/tab_send_recv.py")
+    tab_send_recv.render(df)
 
 with tabs[3]:
-    st.info("Tab 3 (CWND & RTT) logic under construction. File: tabs/tab_cwnd_rtt.py")
+    tab_cwnd_rtt.render(df, ebpf_events, meta_data)
 
 with tabs[4]:
-    st.info("Tab 4 (Async I/O) logic under construction. File: tabs/tab_async.py")
+    tab_async.render(df)
 
 with tabs[5]:
-    st.info("Tab 5 (eBPF) logic under construction. File: tabs/tab_ebpf.py")
+    tab_ebpf.render(df, ebpf_events, meta_data)
 
 with tabs[6]:
-    st.info("Tab 6 (Netlink) logic under construction. File: tabs/tab_netlink.py")
+    tab_netlink.render(netlink_events, df, meta_data)
 
 with tabs[7]:
-    st.info("Tab 7 (Control Plane) logic under construction. File: tabs/tab_control.py")
+    tab_control.render(df, meta_data)
+
+with tabs[8]:
+    tab_global.render(base_dir, sessions)
