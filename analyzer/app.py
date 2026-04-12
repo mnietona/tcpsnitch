@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 from collections import Counter
 import os
+import re
 
 # --- Internal Imports ---
 from config import PLOTLY_THEME, SEND_TYPES, RECV_TYPES, ASYNC_TYPES, CTRL_TYPES
@@ -60,6 +61,19 @@ with st.sidebar:
     if not sessions:
         st.error("No traces found. Please check the directory path.")
         st.stop()
+
+    # --- NOUVEAU : Logique de tri par date/heure ---
+    def get_timestamp(session_path):
+        """Extrait la partie YYYYMMDD_HHMMSS du nom du dossier."""
+        basename = os.path.basename(session_path)
+        # Cherche 8 chiffres, un underscore, 6 chiffres à la fin du nom
+        match = re.search(r'(\d{8}_\d{6})$', basename)
+        # Si ça matche, on retourne le timestamp pour le tri. Sinon on renvoie 0.
+        return match.group(1) if match else "00000000_000000"
+
+    # Tri des sessions du plus récent au plus ancien
+    sessions = sorted(sessions, key=get_timestamp, reverse=True)
+    # -----------------------------------------------
 
     session_labels = [os.path.basename(s) for s in sessions]
     selected_label = st.selectbox("Select Session", session_labels)

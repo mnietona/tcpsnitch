@@ -236,7 +236,7 @@ clean:
 	@rm -f ./$(BIN_DIR)/*.so* ./$(BIN_DIR)/*hash ./$(BIN_DIR)/enable_i386 $(CONFIG)
 	@rm -f $(BPF_OBJ) $(BPF_SKEL) $(BPF_ANDROID_OBJ)
 	@find . -type f -name '.DS_Store' -delete
-	@find . -type f -name '._*' -delete
+	@find . -type d -name '__pycache__' -exec rm -rf {} +
 
 tests: linux install
 	cd tests && make test
