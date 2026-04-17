@@ -41,6 +41,13 @@ def load_all_sessions(base_dir, sessions, platform_filter="ALL"):
 
         if events:
             temp_df = pd.DataFrame(events)
+            is_fake = temp_df.get("fake_call", pd.Series(False, index=temp_df.index)).fillna(False).astype(bool)
+            if "details" in temp_df.columns:
+                is_fake = is_fake | temp_df["details"].apply(
+                    lambda d: d.get("fake_call", False) if isinstance(d, dict) else False
+                )
+            temp_df = temp_df[~is_fake].copy()
+            
             if "return_value" in temp_df.columns:
                 temp_df["return_value"] = pd.to_numeric(temp_df["return_value"], errors="coerce").fillna(0)
             if "timestamp_usec" in temp_df.columns:

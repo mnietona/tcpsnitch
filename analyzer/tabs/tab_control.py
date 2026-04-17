@@ -282,13 +282,13 @@ def render(df, meta_data):
 
         req_counts = ioctl_df["request"].value_counts()
 
-        st.markdown(
-            "<p style='font-size:0.75rem;color:#8b949e;'>"
-            "ioctl() calls on sockets are used for low-level interface queries. "
-            "On Android, ioctl(SIOCGIFADDR) is commonly used to retrieve the IP address "
-            "of an interface, as noted in the 2017 analysis.</p>",
-            unsafe_allow_html=True,
-        )
+ #       st.markdown(
+   #           "<p style='font-size:0.75rem;color:#8b949e;'>"
+    #          "ioctl() calls on sockets are used for low-level interface queries. "
+     #         "On Android, ioctl(SIOCGIFADDR) is commonly used to retrieve the IP address "
+     #         "of an interface, as noted in the 2017 analysis.</p>",
+    #          unsafe_allow_html=True,
+    #      )
 
         col_ioctl, col_ioctl_stats = st.columns([2, 1])
 

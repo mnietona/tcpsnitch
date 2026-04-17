@@ -131,7 +131,18 @@ for ev in netlink_events:
     if "timestamp_usec" in ev:
         ev["t_ms"] = (ev["timestamp_usec"] - global_t0_usec) / 1000.0
 
-type_counts = Counter(df["type"].tolist()) if not df.empty else Counter()
+# --- ISOLATION DES FAKE CALLS ---
+if not df.empty:
+    is_fake = df.get("fake_call", pd.Series(False, index=df.index)).fillna(False).astype(bool)
+    if "details" in df.columns:
+        is_fake = is_fake | df["details"].apply(
+            lambda d: d.get("fake_call", False) if isinstance(d, dict) else False
+        )
+    df_real = df[~is_fake].copy()
+else:
+    df_real = df.copy()
+
+type_counts = Counter(df_real["type"].tolist()) if not df_real.empty else Counter()
 n_retrans = sum(1 for e in ebpf_events if e.get("type") == "tcp_retransmit")
 
 # ── Dynamic Header ───────────────────────────────────────────────────────────
@@ -147,7 +158,7 @@ st.markdown(f"""
   </div>
   <h1 style="margin:4px 0 0 0;font-size:1.6rem;">{header_title}</h1>
   <div style="margin-top:6px;">
-    <span class="event-tag tag-tcp">LD_PRELOAD {len(all_events):,} events</span>
+    <span class="event-tag tag-tcp">LD_PRELOAD {len(df_real):,} events</span>
     <span class="event-tag tag-ebpf">eBPF {len(ebpf_events):,} events · {n_retrans} retransmits</span>
     <span class="event-tag tag-ok">Netlink {len(netlink_events):,} events</span>
   </div>
@@ -168,29 +179,20 @@ tabs = st.tabs([
 ])
 
 with tabs[0]:
-    tab_overview.render(df, all_events, type_counts, n_retrans, meta_data,
-                        ebpf_events=ebpf_events, netlink_events=netlink_events)
-
+    tab_overview.render(df_real, all_events, type_counts, n_retrans, meta_data, ebpf_events=ebpf_events, netlink_events=netlink_events)
 with tabs[1]:
-    tab_sockets.render(df, all_events)
-
+    tab_sockets.render(df_real, all_events)  
 with tabs[2]:
-    tab_send_recv.render(df)
-
+    tab_send_recv.render(df_real)
 with tabs[3]:
-    tab_cwnd_rtt.render(df, ebpf_events, meta_data)
-
+    tab_cwnd_rtt.render(df, ebpf_events, meta_data)  
 with tabs[4]:
-    tab_async.render(df)
-
+    tab_async.render(df_real)
 with tabs[5]:
-    tab_ebpf.render(df, ebpf_events, meta_data)
-
+    tab_ebpf.render(df_real, ebpf_events, meta_data)
 with tabs[6]:
-    tab_netlink.render(netlink_events, df, meta_data)
-
-with tabs[7]:
-    tab_control.render(df, meta_data)
-
+    tab_netlink.render(netlink_events, df_real, meta_data)
+with tabs[7]: 
+    tab_control.render(df_real, meta_data)
 with tabs[8]:
     tab_global.render(base_dir, sessions)

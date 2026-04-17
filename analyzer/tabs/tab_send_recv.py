@@ -123,7 +123,7 @@ def render(df):
         )
     )
     # Ligne verticale pour montrer la limite classique d'un segment TCP (MSS)
-    fig_size.add_vline(x=1448, line_dash="dot", line_color="gray", annotation_text="Typical TCP MSS (1448B)", annotation_position="top left")
+    #–—fig_size.add_vline(x=1448, line_dash="dot", line_color="gray", annotation_text="Typical TCP MSS (1448B)", annotation_position="top left")
     
     st.plotly_chart(fig_size, use_container_width=True)
 
