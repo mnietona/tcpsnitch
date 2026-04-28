@@ -63,3 +63,4 @@ include/tcpsnitch.skel.h
 
 # --- Android ---
 android_deps/
+android_btf/

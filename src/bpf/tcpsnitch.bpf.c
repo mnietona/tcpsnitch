@@ -59,6 +59,7 @@ emit_event(__u64 session_id, EbpfEventType type, __u32 pid)
 
 /* ── Program 1: TCP Retransmissions ───────────────────────────────────── */
 
+#ifndef __ANDROID__
 struct trace_event_raw_tcp_event_sk_skb {
     unsigned short common_type;
     unsigned char  common_flags;
@@ -76,6 +77,7 @@ struct trace_event_raw_tcp_event_sk_skb {
     __u8           saddr_v6[16];
     __u8           daddr_v6[16];
 };
+#endif
 
 SEC("tracepoint/tcp/tcp_retransmit_skb")
 int trace_tcp_retransmit(struct trace_event_raw_tcp_event_sk_skb *ctx)
@@ -129,6 +131,8 @@ int trace_iouring_complete(struct trace_event_raw_io_uring_complete *ctx)
 
 /* ── Program 3: MPTCP Subflows ────────────────────────────────────────── */
 
+#ifndef __ANDROID__
+
 struct trace_event_raw_mptcp_subflow_create {
     unsigned short common_type;
     unsigned char  common_flags;
@@ -157,6 +161,8 @@ int trace_mptcp_subflow(struct trace_event_raw_mptcp_subflow_create *ctx)
     bpf_ringbuf_submit(ev, 0);
     return 0;
 }
+
+#endif /* __ANDROID__ */
 
 /* ── Lifecycle Management ────────────────────────────────────────────────── */
 

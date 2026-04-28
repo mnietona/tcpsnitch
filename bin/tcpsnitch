@@ -357,7 +357,7 @@ tcpsnitch_android() {
     local LIBPATH="/data"
     adb shell su -c chmod 777 /data
     
-    # --- LE BLOC MODIFIÉ PAR TON COLLÈGUE (eBPF vs Standard) ---
+    # EBPF
     if [[ $OPT_E -eq "1" ]]; then
         assert_lib_present "$ARM_LIB_EBPF"
         info "eBPF mode enabled — pushing eBPF lib"
@@ -382,7 +382,6 @@ tcpsnitch_android() {
         # Injection de la lib standard
         adb shell setprop wrap."${PACKAGE:0:26}" LD_PRELOAD="${LIBPATH}/${ARM_LIB}"
     fi
-    # ----------------------------------------------------------
 
     # Properties
     adb shell setprop "${PROP_PREFIX}.opt_b"    "$OPT_B"
