@@ -204,14 +204,22 @@ android: check-ndk $(HEADERS) $(SOURCES_ANDROID)
 	@echo "[+] Done: ./$(BIN_DIR)/$(LIB_ARM64)"
 	@file ./$(BIN_DIR)/$(LIB_ARM64)
 
+# --- Extract and Generate Android vmlinux.h ---
+$(ANDROID_BTF_DIR)/vmlinux.h:
+	@echo "[-] Fetching BTF from Android device and generating vmlinux.h..."
+	@mkdir -p $(ANDROID_BTF_DIR)
+	@adb shell su -c "cat /sys/kernel/btf/vmlinux" > $(ANDROID_BTF_DIR)/vmlinux_raw.bin
+	@$(BPFTOOL) btf dump file $(ANDROID_BTF_DIR)/vmlinux_raw.bin format c > $@
+	@echo "[+] vmlinux.h generated successfully."
+
 # --- Compile Android eBPF Kernel Object ---
-$(BPF_ANDROID_OBJ): $(BPF_SRC_DIR)/tcpsnitch.bpf.c $(INC_DIR)/bpf_shared_maps.h
+$(BPF_ANDROID_OBJ): $(BPF_SRC_DIR)/tcpsnitch.bpf.c $(INC_DIR)/bpf_shared_maps.h $(ANDROID_BTF_DIR)/vmlinux.h
 	@echo "[-] Compiling Android BPF kernel program..."
 	@mkdir -p $(BIN_DIR)
 	@$(BPF_CLANG) -g -O2 -target bpf \
-	    -D__TARGET_ARCH_arm64 -D__ANDROID__ \
-	    -I$(ANDROID_BTF_DIR) -I$(INC_DIR) \
-	    -c $< -o $@
+		-D__TARGET_ARCH_arm64 -D__ANDROID__ \
+		-I$(ANDROID_BTF_DIR) -I$(INC_DIR) \
+		-c $< -o $@
 
 # --- EBPF ---
 android-ebpf: check-ndk $(HEADERS) $(SOURCES_ANDROID_EBPF) $(BPF_ANDROID_OBJ)
