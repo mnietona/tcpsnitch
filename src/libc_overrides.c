@@ -27,6 +27,9 @@
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
+#include <unistd.h>
+#include <sys/types.h>
+
 
 #define EXPORT __attribute__((visibility("default")))
 #define LIBC_VERSION (__GLIBC__ * 100 + __GLIBC_MINOR__)
@@ -728,4 +731,16 @@ EXPORT ssize_t splice(int fd_in, loff_t *off_in, int fd_out, loff_t *off_out,
 
     errno = err;
     return ret;
+}
+
+
+/* ── HACK ANTI-ROOT CHECK (Pour Telegram, VLC, etc.) ─────────────────────── */
+
+// si getuid() ou geteuid() retourne 0, certaines applis refusent de fonctionner
+EXPORT uid_t getuid(void) {
+    return 1000;  // Simule un utilisateur non-root pour éviter les blocages d'applications
+}
+
+EXPORT uid_t geteuid(void) {
+    return 1000;
 }

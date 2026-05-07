@@ -273,7 +273,8 @@ tcpsnitch_linux() {
         ifconfig | grep 'HWaddr' | awk '{print $NF}' | sha256sum | awk '{print $1}' > "${meta_dir}/host_id"
     fi
     
-    "$1" --version 2>/dev/null > "${meta_dir}/app_version"
+   # "$1" --version 2>/dev/null > "${meta_dir}/app_version"
+    ( "$@" --version > "${meta_dir}/app_version" ) 2>/dev/null || true
     
     for i in $(seq 0 $((${META_OPTIONS_COUNT}-1))); do
         echo "${META_OPTIONS_VALS[$i]}" > "${meta_dir}/${META_OPTIONS_NAMES[$i]}"
