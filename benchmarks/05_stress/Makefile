@@ -20,7 +20,7 @@ run: check-deps
 	@echo "⚠️  Le scénario C dure 10 min — ne pas interrompre"
 	@bash run_benchmark.sh
 
-analyze:
+analyze: 
 	@echo "── Analyse des résultats ─────────────────────────────"
 	@$(PYTHON) analyze.py
 

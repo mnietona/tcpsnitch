@@ -20,7 +20,6 @@ struct fd_key {
 typedef enum {
     EBPF_EV_TCP_RETRANSMIT = 0,
     EBPF_EV_IOURING_COMPLETE = 1,
-    EBPF_EV_MPTCP_SUBFLOW = 2,
 } EbpfEventType;
 
 /**
@@ -50,13 +49,7 @@ struct ebpf_event {
             __s32 res;
         } iouring_complete;
 
-        /** * @brief Payload for EBPF_EV_MPTCP_SUBFLOW
-         */
-        struct {
-            __u32 token;
-            __u8 family;
-            __u8 is_backup;
-        } mptcp_subflow;
+        
     };
 };
 

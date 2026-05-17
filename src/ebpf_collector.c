@@ -54,9 +54,6 @@ static void write_event_jsonl(const struct ebpf_event *ev) {
     case EBPF_EV_IOURING_COMPLETE:
         type_str = "iouring_complete";
         break;
-    case EBPF_EV_MPTCP_SUBFLOW:
-        type_str = "mptcp_subflow";
-        break;
     default:
         type_str = "unknown";
         break; // Sécurité
@@ -90,16 +87,6 @@ static void write_event_jsonl(const struct ebpf_event *ev) {
                 "\"res\":%" PRId32,
                 (uint64_t)ev->iouring_complete.user_data,
                 (int32_t)ev->iouring_complete.res);
-        break;
-
-    case EBPF_EV_MPTCP_SUBFLOW:
-        fprintf(g_collector.jsonl_fp,
-                "\"token\":%" PRIu32 ","
-                "\"family\":%" PRIu8 ","
-                "\"is_backup\":%" PRIu8,
-                (uint32_t)ev->mptcp_subflow.token,
-                (uint8_t)ev->mptcp_subflow.family,
-                (uint8_t)ev->mptcp_subflow.is_backup);
         break;
     }
 
@@ -170,6 +157,17 @@ int ebpf_collector_init(const char *output_dir) {
 
     int attached = 0;
 
+    // 1. Attachement de inet_sock_set_state (Filet de sécurité)
+    g_collector.skel->links.trace_inet_sock_set_state =
+        bpf_program__attach(g_collector.skel->progs.trace_inet_sock_set_state);
+    if (g_collector.skel->links.trace_inet_sock_set_state) {
+        attached++;
+    } else {
+        LOG(WARN, "ebpf_collector: tracepoint inet_sock_set_state not found. "
+                  "Socket lifecycle fallback won't be traced by eBPF.");
+    }
+
+    // 2. Attachement de tcp_retransmit_skb
     g_collector.skel->links.trace_tcp_retransmit =
         bpf_program__attach(g_collector.skel->progs.trace_tcp_retransmit);
     if (g_collector.skel->links.trace_tcp_retransmit) {
@@ -180,6 +178,7 @@ int ebpf_collector_init(const char *output_dir) {
             "retransmissions won't be traced by eBPF.");
     }
 
+    // 3. Attachement de io_uring_complete
     g_collector.skel->links.trace_iouring_complete =
         bpf_program__attach(g_collector.skel->progs.trace_iouring_complete);
     if (g_collector.skel->links.trace_iouring_complete) {
@@ -187,16 +186,6 @@ int ebpf_collector_init(const char *output_dir) {
     } else {
         LOG(WARN, "ebpf_collector: tracepoint io_uring_complete not found. "
                   "io_uring won't be traced by eBPF.");
-    }
-
-    g_collector.skel->links.trace_mptcp_subflow =
-        bpf_program__attach(g_collector.skel->progs.trace_mptcp_subflow);
-    if (g_collector.skel->links.trace_mptcp_subflow) {
-        attached++;
-    } else {
-        LOG(INFO,
-            "ebpf_collector: MPTCP tracepoint not available on this kernel "
-            "(normal).");
     }
 
     if (attached == 0) {

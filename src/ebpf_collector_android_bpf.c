@@ -39,7 +39,6 @@ static struct {
     /* attached links — kept to auto-detach on destroy */
     struct bpf_link     *link_retransmit;
     struct bpf_link     *link_iouring;
-    struct bpf_link     *link_mptcp;
     struct bpf_link     *link_inet_state;
 } g_col = {
     .obj            = NULL,
@@ -52,7 +51,6 @@ static struct {
     .file_mutex     = PTHREAD_MUTEX_INITIALIZER,
     .link_retransmit = NULL,
     .link_iouring    = NULL,
-    .link_mptcp      = NULL,
     .link_inet_state = NULL,
 };
 
@@ -67,7 +65,6 @@ static void write_event_jsonl(const struct ebpf_event *ev)
     switch (ev->type) {
     case EBPF_EV_TCP_RETRANSMIT:   type_str = "tcp_retransmit";   break;
     case EBPF_EV_IOURING_COMPLETE: type_str = "iouring_complete"; break;
-    case EBPF_EV_MPTCP_SUBFLOW:    type_str = "mptcp_subflow";    break;
     default:                        type_str = "unknown";           break;
     }
 
@@ -101,14 +98,13 @@ static void write_event_jsonl(const struct ebpf_event *ev)
                 (uint64_t)ev->iouring_complete.user_data,
                 (int32_t)ev->iouring_complete.res);
         break;
-    case EBPF_EV_MPTCP_SUBFLOW:
-        fprintf(g_col.jsonl_fp,
-                "\"token\":%" PRIu32 ","
-                "\"family\":%" PRIu8 ","
-                "\"is_backup\":%" PRIu8,
-                (uint32_t)ev->mptcp_subflow.token,
-                (uint8_t)ev->mptcp_subflow.family,
-                (uint8_t)ev->mptcp_subflow.is_backup);
+    }
+
+    fprintf(g_col.jsonl_fp, "}\n");
+    pthread_mutex_unlock(&g_col.file_mutex);
+}
+
+/* ── Ring-buffer callback & polling thread ───────────────────────────────── */
         break;
     }
 
@@ -206,9 +202,6 @@ int ebpf_collector_init(const char *output_dir)
     g_col.link_iouring    = attach_prog("trace_iouring_complete", false);
     if (g_col.link_iouring)    attached++;
 
-    g_col.link_mptcp      = attach_prog("trace_mptcp_subflow", false);
-    if (g_col.link_mptcp)      attached++;
-
     g_col.link_inet_state = attach_prog("trace_inet_sock_set_state", true);
     if (g_col.link_inet_state) attached++;
 
@@ -279,7 +272,6 @@ void ebpf_collector_stop(void)
     if (g_col.rb)             { ring_buffer__free(g_col.rb); g_col.rb = NULL; }
     if (g_col.link_retransmit){ bpf_link__destroy(g_col.link_retransmit); g_col.link_retransmit = NULL; }
     if (g_col.link_iouring)   { bpf_link__destroy(g_col.link_iouring);    g_col.link_iouring    = NULL; }
-    if (g_col.link_mptcp)     { bpf_link__destroy(g_col.link_mptcp);      g_col.link_mptcp      = NULL; }
     if (g_col.link_inet_state){ bpf_link__destroy(g_col.link_inet_state); g_col.link_inet_state = NULL; }
     if (g_col.obj)            { bpf_object__close(g_col.obj);              g_col.obj             = NULL; }
 

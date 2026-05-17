@@ -151,9 +151,36 @@ def main():
     out_ebpf = os.path.join(OUTPUT_DIR, "graph_ebpf_cwnd.png")
     fig2.savefig(out_ebpf, dpi=200)
     plt.close(fig2)
+    
+    # ========================================
+    # GRAPHIQUE FINAL : SUPERPOSITION (COMPARISON)
+    # ========================================
+    fig3, ax3 = plt.subplots(figsize=(14, 6))
+
+    if t_tcp_ms:
+        # On trace le polling (tcp_info) en fond (bleu clair)
+        ax3.step(t_tcp_ms, c_tcp_val, where='post', color='#2980b9', alpha=0.4, linewidth=1.5, label="Polling (Espace Utilisateur)")
+        
+    if t_ebpf_ms:
+        # On trace les captures eBPF par-dessus (Mauve + Points Rouges)
+        ax3.step(t_ebpf_ms, c_ebpf_val, where='post', color='#8e44ad', linewidth=2, label="Capture noyau (eBPF)")
+        ax3.plot(t_ebpf_ms, c_ebpf_val, marker='o', color='#c0392b', markersize=6, markeredgecolor='white', linestyle='None', zorder=5, label="Instant de retransmission")
+
+    ax3.axhline(y=10, color='#95a5a6', linestyle='--', linewidth=1, label="Init CWND")
+    ax3.set_title("Réconciliation des mesures de congestion (Polling vs eBPF)", fontsize=14, fontweight='bold')
+    ax3.set_xlabel("Temps écoulé (ms)", fontsize=12)
+    ax3.set_ylabel("Taille de la fenêtre (MSS)", fontsize=12)
+    ax3.legend(loc='upper right', frameon=True, shadow=True)
+    ax3.grid(True, linestyle=':', alpha=0.6)
+
+    plt.tight_layout()
+    out_comp = os.path.join(OUTPUT_DIR, "graph_comparison_cwnd.png")
+    fig3.savefig(out_comp, dpi=250) # Haute résolution pour le mémoire
+    plt.close(fig3)
 
     print(f" ✅ Graphique 1 (TCP Info) généré : {out_tcp}")
     print(f" ✅ Graphique 2 (eBPF) généré     : {out_ebpf}")
+    print(f" ✅ Graphique de comparaison généré : {out_comp}")
 
 if __name__ == "__main__":
     main()

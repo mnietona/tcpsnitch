@@ -129,40 +129,6 @@ int trace_iouring_complete(struct trace_event_raw_io_uring_complete *ctx)
     return 0;
 }
 
-/* ── Program 3: MPTCP Subflows ────────────────────────────────────────── */
-
-#ifndef __ANDROID__
-
-struct trace_event_raw_mptcp_subflow_create {
-    unsigned short common_type;
-    unsigned char  common_flags;
-    unsigned char  common_preempt_count;
-    int            common_pid;
-
-    __u32 token;
-    __u8  family;
-    __u8  backup;
-    __u16 sport;
-    __u16 dport;
-};
-
-SEC("tracepoint/mptcp/mptcp_subflow_create")
-int trace_mptcp_subflow(struct trace_event_raw_mptcp_subflow_create *ctx)
-{
-    __u32 pid = bpf_get_current_pid_tgid() >> 32;
-
-    struct ebpf_event *ev = emit_event(0, EBPF_EV_MPTCP_SUBFLOW, pid);
-    if (!ev) return 0;
-
-    ev->mptcp_subflow.token     = ctx->token;
-    ev->mptcp_subflow.family    = ctx->family;
-    ev->mptcp_subflow.is_backup = ctx->backup;
-
-    bpf_ringbuf_submit(ev, 0);
-    return 0;
-}
-
-#endif /* __ANDROID__ */
 
 /* ── Lifecycle Management ────────────────────────────────────────────────── */
 
@@ -172,8 +138,11 @@ int trace_inet_sock_set_state(struct trace_event_raw_inet_sock_set_state *ctx)
 {
     // TCP_CLOSE = 7, TCP_CLOSE_WAIT = 8 
     if (ctx->newstate == 7 || ctx->newstate == 8) {
-        __u16 sport = ctx->sport;
-        bpf_map_delete_elem(&sport_to_session, &sport);
+        __u16 sport1 = ctx->sport;
+        __u16 sport2 = (sport1 >> 8) | (sport1 << 8);
+
+        bpf_map_delete_elem(&sport_to_session, &sport1);
+        bpf_map_delete_elem(&sport_to_session, &sport2);
     }
     return 0;
 }
