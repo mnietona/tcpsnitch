@@ -13,7 +13,7 @@ def render(df):
         st.info("No data available.")
         return
 
-    # --- 1. DATA EXTRACTION ---
+    # Extraction
     async_df = df[df["type"].isin(ASYNC_TYPES)].copy()
     ctrl_df  = df[df["type"].isin(CTRL_TYPES)].copy()
     
@@ -31,7 +31,7 @@ def render(df):
         sockopt_df['optname'] = sockopt_df['details'].apply(extract_optname)
         sockopt_df = sockopt_df[sockopt_df['optname'] != 'UNKNOWN']
 
-    # --- 2. METRICS ---
+    # Metrics
     c1, c2, c3, c4 = st.columns(4)
     
     n_polls = len(polling_df)
@@ -59,7 +59,6 @@ def render(df):
 
     st.divider()
 
-    # --- 3. ROW 1: MULTIPLEXING EFFICIENCY ---
     col1, col2 = st.columns(2)
     theme_async = PLOTLY_THEME.copy()
     if "margin" in theme_async: del theme_async["margin"]
@@ -99,7 +98,6 @@ def render(df):
 
     st.divider()
 
-    # --- 4. ROW 2: CONTROL PLANE & OPTIONS ---
     col3, col4 = st.columns(2)
 
     with col3:
@@ -134,7 +132,6 @@ def render(df):
         else:
             st.info("No socket options data.")
 
-    # --- 5. DISTRIBUTION OF READY FDS (CDF) ---
     if n_polls > 0 and 'success_polls' in locals() and not success_polls.empty:
         st.divider()
         st.markdown('<div class="section-header">Throughput Capacity (Simultaneous Ready Sockets)</div>', unsafe_allow_html=True)

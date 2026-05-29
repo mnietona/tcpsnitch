@@ -33,7 +33,6 @@ def render(df, ebpf_events, meta_data):
         st.warning("eBPF event data is empty or malformed.")
         return
 
-    # --- Normalize session_id ---
     if "session_id" in df_ebpf.columns:
         def norm_sid(val):
             s = str(val)
@@ -42,14 +41,10 @@ def render(df, ebpf_events, meta_data):
             return int(s) if s.isdigit() else val
         df_ebpf["norm_sid"] = df_ebpf["session_id"].apply(norm_sid)
 
-    # ---  Global Metrics ---
-    mptcp = False
+  
     type_counts = df_ebpf["type"].value_counts()
     n_retrans = type_counts.get("tcp_retransmit", 0)
     n_iouring = type_counts.get("iouring_complete", 0)
-    if "mptcp_subflow" in type_counts:
-        mptcp = TRUE
-        n_mptcp = type_counts.get("mptcp_subflow", 0)
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -58,9 +53,6 @@ def render(df, ebpf_events, meta_data):
         st.metric("TCP Retransmissions", f"{n_retrans:,}")
     with c3:
         st.metric("io_uring Completions", f"{n_iouring:,}")
-    if mptcp:
-        with c4:
-            st.metric("MPTCP Subflow Events", f"{n_mptcp:,}")
 
     st.divider()
 
@@ -68,7 +60,6 @@ def render(df, ebpf_events, meta_data):
     if "margin" in theme:
         del theme["margin"]
 
-    # ---  Event Type Distribution ---
     st.markdown('<div class="section-header">Event Type Distribution</div>', unsafe_allow_html=True)
 
     fig_dist = go.Figure(go.Bar(
@@ -85,9 +76,6 @@ def render(df, ebpf_events, meta_data):
     )
     st.plotly_chart(fig_dist, use_container_width=True)
 
-    # =====================================================================
-    # SECTION A: TCP RETRANSMISSIONS
-    # =====================================================================
     df_retrans = df_ebpf[df_ebpf["type"] == "tcp_retransmit"].copy()
 
     if not df_retrans.empty:
@@ -125,7 +113,6 @@ def render(df, ebpf_events, meta_data):
             else:
                 st.metric("Affected Sockets", "N/A")
 
-        # ---  Retransmission Timeline ---
         st.markdown("#### Retransmission Timeline")
         if "t_ms" in df_retrans.columns:
             fig_timeline = go.Figure()
@@ -163,7 +150,7 @@ def render(df, ebpf_events, meta_data):
             )
             st.plotly_chart(fig_timeline, use_container_width=True)
 
-        # ---  CDF of CWND at Retransmission ---
+
         if "snd_cwnd" in df_retrans.columns and len(df_retrans) > 1:
             col_cdf1, col_cdf2 = st.columns(2)
 
@@ -199,7 +186,6 @@ def render(df, ebpf_events, meta_data):
                 )
                 st.plotly_chart(fig_cdf_cwnd, use_container_width=True)
 
-            # ---  CDF of sRTT at Retransmission ---
             with col_cdf2:
                 if "srtt_us" in df_retrans.columns:
                     st.markdown("#### CDF of sRTT at Retransmission")
@@ -229,7 +215,6 @@ def render(df, ebpf_events, meta_data):
                     )
                     st.plotly_chart(fig_cdf_rtt, use_container_width=True)
 
-        # ---  Inter-retransmission Time CDF ---
         if "t_ms" in df_retrans.columns and len(df_retrans) > 2:
             st.markdown("#### CDF of Inter-Retransmission Intervals")
             st.markdown(
@@ -261,7 +246,7 @@ def render(df, ebpf_events, meta_data):
                 )
                 st.plotly_chart(fig_ir, use_container_width=True)
 
-        # ---  Per-Socket Retransmission Breakdown ---
+
         if "norm_sid" in df_retrans.columns:
             st.markdown("#### Per-Socket Retransmission Count")
             per_sock = df_retrans.groupby("norm_sid").agg(
@@ -294,9 +279,6 @@ def render(df, ebpf_events, meta_data):
 
         
 
-    # =====================================================================
-    # SECTION B: io_uring COMPLETIONS
-    # =====================================================================
     df_iouring = df_ebpf[df_ebpf["type"] == "iouring_complete"].copy()
 
     if not df_iouring.empty:
@@ -327,7 +309,6 @@ def render(df, ebpf_events, meta_data):
             else:
                 st.metric("Errors", "N/A")
 
-        # io_uring completion timeline
         if "t_ms" in df_iouring.columns:
             st.markdown("#### Completion Timeline")
             color_vals = df_iouring["res"].apply(lambda x: "#3fb950" if x >= 0 else "#ff7b72") if "res" in df_iouring.columns else "#58a6ff"
@@ -349,7 +330,6 @@ def render(df, ebpf_events, meta_data):
             )
             st.plotly_chart(fig_iu, use_container_width=True)
 
-        # CDF of completion results (bytes transferred)
         if "res" in df_iouring.columns:
             success_res = df_iouring[df_iouring["res"] > 0]["res"].sort_values().values
             if len(success_res) > 1:
@@ -367,66 +347,6 @@ def render(df, ebpf_events, meta_data):
                 )
                 st.plotly_chart(fig_cdf_iu, use_container_width=True)
 
-    
-    # =====================================================================
-    # SECTION C: MPTCP SUBFLOW EVENTS
-    # =====================================================================
-    # df_mptcp = df_ebpf[df_ebpf["type"] == "mptcp_subflow"].copy()
-
-    # if not df_mptcp.empty:
-    #     st.divider()
-    #     st.markdown('<div class="section-header">MPTCP Subflow Analysis</div>', unsafe_allow_html=True)
-
-    #     st.markdown("""
-    #     <p style="font-size:0.78rem;color:#8b949e;">
-    #     Multipath TCP subflow events captured from kernel space. Each event represents
-    #     a subflow creation or state change, including the MPTCP token, address family,
-    #     and backup flag.
-    #     </p>
-    #     """, unsafe_allow_html=True)
-
-    #     mp1, mp2, mp3 = st.columns(3)
-    #     with mp1:
-    #         st.metric("Subflow Events", f"{len(df_mptcp):,}")
-    #     with mp2:
-    #         if "family" in df_mptcp.columns:
-    #             families = df_mptcp["family"].value_counts()
-    #             st.metric("Address Families", ", ".join(f"{k}: {v}" for k, v in families.items()))
-    #         else:
-    #             st.metric("Address Families", "N/A")
-    #     with mp3:
-    #         if "is_backup" in df_mptcp.columns:
-    #             n_backup = df_mptcp["is_backup"].sum()
-    #             st.metric("Backup Subflows", f"{n_backup:,}")
-    #         else:
-    #             st.metric("Backup Subflows", "N/A")
-
-    #     # Subflow timeline
-    #     if "t_ms" in df_mptcp.columns:
-    #         st.markdown("#### Subflow Event Timeline")
-    #         fig_mp = go.Figure(go.Scatter(
-    #             x=df_mptcp["t_ms"],
-    #             y=[1] * len(df_mptcp),
-    #             mode="markers",
-    #             marker=dict(
-    #                 size=12, symbol="diamond",
-    #                 color=df_mptcp["is_backup"].apply(
-    #                     lambda x: "#f0a04b" if x else "#58a6ff"
-    #                 ).tolist() if "is_backup" in df_mptcp.columns else "#58a6ff",
-    #             ),
-    #             text=df_mptcp.get("token", pd.Series(["?"]*len(df_mptcp))).astype(str),
-    #             hovertemplate="Time: %{x:.1f} ms<br>Token: %{text}<extra></extra>",
-    #         ))
-    #         fig_mp.update_layout(
-    #             **theme, height=200,
-    #             margin=dict(l=40, r=20, t=20, b=40),
-    #             xaxis_title="Time (ms)",
-    #             yaxis=dict(visible=False),
-    #         )
-    #         st.plotly_chart(fig_mp, use_container_width=True)
-    
-
-    # --- Raw Data Expander ---
     with st.expander("View Raw eBPF Events"):
         display_cols = [c for c in df_ebpf.columns if c not in ("norm_sid", "bin_ms")]
         st.dataframe(df_ebpf[display_cols].head(500), use_container_width=True, hide_index=True)

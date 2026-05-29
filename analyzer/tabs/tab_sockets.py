@@ -11,13 +11,11 @@ def render(df, all_events):
         st.info("No socket data available in this trace.")
         return
 
-    # Extract errno from details for error analysis
     if "errno" not in df.columns and "details" in df.columns:
         df["errno"] = df["details"].apply(
             lambda d: d.get("errno", None) if isinstance(d, dict) else None
         )
 
-    # --- 1. Global Socket Registry & Stats ---
     sockets_summary = []
     grouped = df.groupby("_socket_id")
     
@@ -29,7 +27,6 @@ def render(df, all_events):
         t_end   = group["t_ms"].max()
         lifespan = t_end - t_start
         
-        # Determine Protocol & Domain
         domain = "Unknown"
         protocol = "Unknown"
         for _, row in group.dropna(subset=['details']).iterrows():
@@ -37,21 +34,18 @@ def render(df, all_events):
             if isinstance(details, dict) and 'sock_info' in details:
                 domain   = details['sock_info'].get('domain', domain)
                 protocol = details['sock_info'].get('type', protocol)
-                # protocol="0" means IPPROTO_DEFAULT — infer from SOCK_STREAM → TCP
                 if str(protocol) == "0":
                     sock_type_raw = str(details['sock_info'].get('type', ''))
                     if "SOCK_STREAM" in sock_type_raw:
                         protocol = "SOCK_STREAM"
                 break
 
-        # Some traces store sock_info.type as numeric "1" (SOCK_STREAM) or "2" (SOCK_DGRAM)
         if str(protocol) == "1": protocol = "SOCK_STREAM"
         if str(protocol) == "2": protocol = "SOCK_DGRAM"
 
         if protocol == "SOCK_STREAM": global_tcp_count += 1
         if protocol == "SOCK_DGRAM":  global_udp_count += 1
         
-        # Extract IP gracefully
         ip = "Unknown/Unbound"
         for _, row in group[group["type"].isin(["connect", "bind", "sendto"])].iterrows():
             d = row.get("details", {})
@@ -59,7 +53,6 @@ def render(df, all_events):
                 ip = d["addr"].get("ip", ip)
                 break
         
-        # Isolate real events (ignore fake_calls for stats)
         if "fake_call" in group.columns:
             real_events = group[group["fake_call"] != True]
         else:
@@ -67,7 +60,6 @@ def render(df, all_events):
                 lambda d: not (isinstance(d, dict) and d.get("fake_call", False))
             )]
         
-        # Calculate Bytes
         sent_ev = real_events[(real_events["type"].isin(SEND_TYPES)) & (real_events["return_value"] > 0)]
         recv_ev = real_events[(real_events["type"].isin(RECV_TYPES)) & (real_events["return_value"] > 0)]
         
@@ -75,12 +67,9 @@ def render(df, all_events):
         recv = recv_ev["return_value"].sum()
         errors = len(real_events[real_events["return_value"] < 0])
         
-        # --- Advanced Timing Metrics ---
-        # 1. First TX / First RX
         t_first_tx = sent_ev["t_ms"].min() if not sent_ev.empty else None
         t_first_rx = recv_ev["t_ms"].min() if not recv_ev.empty else None
         
-        # 2. Setup Delay (Connect -> First TX/RX)
         t_connect = real_events.loc[real_events["type"] == "connect", "t_ms"].min()
         setup_delay = None
         if pd.notna(t_connect):
@@ -88,7 +77,6 @@ def render(df, all_events):
             if valid_firsts:
                 setup_delay = min(valid_firsts) - t_connect
                 
-        # 3. Max Idle Time (Longest gap between API calls)
         sorted_times = real_events["t_ms"].sort_values()
         max_idle_ms = sorted_times.diff().max() if len(sorted_times) > 1 else 0
 
@@ -102,7 +90,6 @@ def render(df, all_events):
 
     summary_df = pd.DataFrame(sockets_summary).sort_values(by=["sent_b", "recv_b"], ascending=[False, False])
     
-    # --- 2. Global Overview ---
     st.markdown("### Trace Overview")
     col_a, col_b, col_c, col_d = st.columns(4)
     with col_a: st.metric("Total Sockets", len(summary_df))
@@ -116,7 +103,6 @@ def render(df, all_events):
     with col_d: st.metric("Total Bytes Recv", f"{summary_df['recv_b'].sum():,} B")
     st.divider()
 
-    # --- 3. Specific Socket Selector ---
     st.markdown("### Detailed Socket Analysis")
     selected_sid = st.selectbox(
         "Select a socket to inspect:",
@@ -128,7 +114,6 @@ def render(df, all_events):
         sock_data = summary_df[summary_df["socket_id"] == selected_sid].iloc[0]
         events = df[df["_socket_id"] == selected_sid].copy()
         
-        # Display Socket Identity
         c1, c2, c3, c4 = st.columns(4)
         with c1: 
             ip_label = str(sock_data['ip'])
@@ -140,14 +125,13 @@ def render(df, all_events):
         with c3: st.metric("Bytes Sent", f"{sock_data['sent_b']:,} B")
         with c4: st.metric("Bytes Recv", f"{sock_data['recv_b']:,} B")
         
-        # Contextual Scientific Analysis — auto-detected findings
         findings = []
         total_data = sock_data['sent_b'] + sock_data['recv_b']
 
         if sock_data['protocol'] == "SOCK_STREAM":
             findings.append(f"TCP flow — lifespan {sock_data['lifespan_ms']:.1f} ms, {total_data:,} bytes exchanged.")
         elif sock_data['protocol'] == "SOCK_DGRAM":
-            # Detect Android ioctl-only pattern
+            # Detecte Pattern Android
             types_in_sock = set(events["type"].unique())
             data_calls = types_in_sock.intersection(set(SEND_TYPES + RECV_TYPES))
             if not data_calls and "ioctl" in types_in_sock:
@@ -159,7 +143,6 @@ def render(df, all_events):
             else:
                 findings.append(f"UDP/QUIC flow — lifespan {sock_data['lifespan_ms']:.1f} ms, {total_data:,} bytes exchanged.")
 
-        # Detect fatal errors on this socket
         if "errno" in events.columns:
             fatal_errnos = {"ECONNABORTED", "ETIMEDOUT", "ECONNRESET", "EHOSTUNREACH"}
             fatal_ev = events[events["errno"].isin(fatal_errnos)]
@@ -171,7 +154,6 @@ def render(df, all_events):
                         "(possible network disruption or remote RST)."
                     )
 
-        # Detect non-blocking connect (EINPROGRESS)
         if "errno" in events.columns:
             einprog = events[events["errno"] == "EINPROGRESS"]
             if not einprog.empty:
@@ -183,16 +165,12 @@ def render(df, all_events):
         for msg in findings:
             st.info(msg)
 
-
-        # --- NEW: Timing & Performance Profiling ---
         st.markdown('<div class="section-header">Timing & Performance Profiling</div>', unsafe_allow_html=True)
         t1, t2, t3, t4 = st.columns(4)
         
-        # TTFB Calculations (Time to First Byte relative to socket creation)
         ttfb_tx = (sock_data['t_first_tx'] - sock_data['t_start']) if pd.notna(sock_data['t_first_tx']) else "N/A"
         ttfb_rx = (sock_data['t_first_rx'] - sock_data['t_start']) if pd.notna(sock_data['t_first_rx']) else "N/A"
         
-        # Format strings safely
         str_ttfb_tx = f"{ttfb_tx:.1f} ms" if isinstance(ttfb_tx, float) else "None"
         str_ttfb_rx = f"{ttfb_rx:.1f} ms" if isinstance(ttfb_rx, float) else "None"
         str_setup = f"{sock_data['setup_delay']:.1f} ms" if pd.notna(sock_data['setup_delay']) else "N/A"
@@ -206,7 +184,6 @@ def render(df, all_events):
         with t4: 
             st.metric("Max Idle Time", f"{sock_data['max_idle_ms']:.1f} ms", help="Longest period of API inactivity. High values mean the connection was kept alive but unused.")
 
-        # --- 4. Event Categorization ---
         def categorize_event(row):
             if row.get('fake_call', False): return 'Noise (Hidden)'
             t = row['type']
@@ -220,7 +197,6 @@ def render(df, all_events):
 
         events['Phase'] = events.apply(categorize_event, axis=1)
         
-        # --- 5. Timeline Graph ---
         st.markdown('<div class="section-header">API Call Chronology</div>', unsafe_allow_html=True)
         
         graph_events = events[events['Phase'] != 'Noise (Hidden)'].copy()
@@ -258,7 +234,6 @@ def render(df, all_events):
         else:
             st.warning("No significant API events logged for this socket.")
 
-        # --- 6. Raw Data Expander ---
         with st.expander("View Raw POSIX Logs for this Socket"):
             display_df = events[['t_ms', 'type', 'return_value', 'fake_call', 'details']].copy()
             display_df['t_ms'] = display_df['t_ms'].apply(lambda x: f"{x:.2f}")

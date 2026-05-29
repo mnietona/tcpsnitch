@@ -18,7 +18,6 @@ def render(df, ebpf_events, meta_data):
         st.info("No TCP data available in this trace.")
         return
 
-    # --- 1. Robust Extraction of tcp_info ---
     df_tcp_info = df[df['type'] == 'tcp_info'].copy()
     tcp_info_per_sock = {}
     
@@ -35,14 +34,12 @@ def render(df, ebpf_events, meta_data):
         for sid, group in df_tcp_info.groupby('_socket_id'):
             tcp_info_per_sock[sid] = group
 
-    # --- 2. Robust Extraction of eBPF ---
     df_ebpf = pd.DataFrame(ebpf_events) if ebpf_events else pd.DataFrame()
     ebpf_cwnd_per_sock = {}
     
     if not df_ebpf.empty and 'type' in df_ebpf.columns:
         df_retrans = df_ebpf[df_ebpf['type'] == 'tcp_retransmit'].copy()
         if not df_retrans.empty:
-            # ROBUST EXTRACTION: Handle both 'srtt_us' and 'srtt' keys
             if 'srtt_us' in df_retrans.columns:
                 df_retrans['srtt_ms'] = pd.to_numeric(df_retrans['srtt_us'], errors='coerce') / 1000.0
             elif 'srtt' in df_retrans.columns:
@@ -50,7 +47,6 @@ def render(df, ebpf_events, meta_data):
             else:
                 df_retrans['srtt_ms'] = float('nan')
             
-            # Strict ID normalization (sess_0 -> 0)
             def norm_sid(val):
                 val_str = str(val)
                 if val_str.startswith("sess_"):
@@ -60,10 +56,10 @@ def render(df, ebpf_events, meta_data):
             df_retrans['norm_sid'] = df_retrans['session_id'].apply(norm_sid)
             
             for sid, group in df_retrans.groupby('norm_sid'):
-                if sid != 9999: # Ignore residual global noise
+                if sid != 9999: # Double securité
                     ebpf_cwnd_per_sock[sid] = group
 
-    # --- 3. UI Selectors ---
+
     all_sids = set(tcp_info_per_sock.keys()).union(set(ebpf_cwnd_per_sock.keys()))
     all_sids = sorted(list(all_sids), key=str)
 
@@ -87,14 +83,12 @@ def render(df, ebpf_events, meta_data):
     theme_cwnd = PLOTLY_THEME.copy()
     if "margin" in theme_cwnd: del theme_cwnd["margin"]
 
-    # --- 4. Automatic Display Loop per Socket ---
     for sid in selected_socks:
         st.markdown(f"### Analysis of Socket {sid}")
         
         tdata = tcp_info_per_sock.get(sid)
         edata = ebpf_cwnd_per_sock.get(sid)
         
-        # Calculate eBPF X-axis (with potential sync heuristic)
         ebpf_x = None
         if edata is not None and not edata.empty:
             ebpf_x = edata["t_ms"].copy()
@@ -104,7 +98,6 @@ def render(df, ebpf_events, meta_data):
                     offset = tdata["t_ms"].min() - ebpf_x.min()
                     ebpf_x = ebpf_x + offset
 
-        # --- Chart 1: CWND (tcp_info + eBPF) ---
         fig_cwnd = go.Figure()
         has_cwnd_data = False
         
@@ -136,11 +129,9 @@ def render(df, ebpf_events, meta_data):
         else:
             st.info(f"No CWND data for Socket {sid}")
 
-        # --- Chart 2: RTT (tcp_info + eBPF SRTT) ---
         fig_rtt = go.Figure()
         has_rtt_data = False
 
-        # Add tcp_info RTT
         if tdata is not None and not tdata.empty and "rtt_ms" in tdata.columns:
             valid_rtt = tdata[tdata["rtt_ms"] > 0]
             if not valid_rtt.empty:
@@ -152,9 +143,7 @@ def render(df, ebpf_events, meta_data):
                 ))
                 has_rtt_data = True
 
-        # Add eBPF SRTT
         if edata is not None and not edata.empty and "srtt_ms" in edata.columns:
-            # Filter out NaN or zero values
             valid_srtt = edata[edata["srtt_ms"] > 0]
             if not valid_srtt.empty:
                 fig_rtt.add_trace(go.Scatter(
@@ -171,18 +160,15 @@ def render(df, ebpf_events, meta_data):
                                   legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5))
             st.plotly_chart(fig_rtt, use_container_width=True)
 
-        # --- 5. Key Metrics (Expanded for eBPF SRTT) ---
         st.markdown('<div class="section-header">Latency & Congestion Metrics</div>', unsafe_allow_html=True)
         c1, c2, c3, c4, c5 = st.columns(5)
         
         n_retrans_sock = len(edata) if edata is not None else 0
         
-        # Safe extraction for tcp_info stats
         avg_rtt_tcp = tdata['rtt_ms'][tdata['rtt_ms'] > 0].mean() if (tdata is not None and "rtt_ms" in tdata.columns) else None
         max_rtt_tcp = tdata['rtt_ms'].max() if (tdata is not None and "rtt_ms" in tdata.columns) else None
         max_cwnd = tdata['cwnd'].max() if (tdata is not None and "cwnd" in tdata.columns) else None
         
-        # Safe extraction for eBPF stats
         avg_srtt_ebpf = edata['srtt_ms'][edata['srtt_ms'] > 0].mean() if (edata is not None and "srtt_ms" in edata.columns) else None
 
         with c1: st.metric("Avg RTT (tcp_info)", f"{avg_rtt_tcp:.2f} ms" if pd.notna(avg_rtt_tcp) else "N/A")
@@ -191,7 +177,6 @@ def render(df, ebpf_events, meta_data):
         with c4: st.metric("Max CWND", f"{max_cwnd:.0f} MSS" if pd.notna(max_cwnd) else "N/A")
         with c5: st.metric("Retransmissions", n_retrans_sock, delta_color="inverse" if n_retrans_sock > 0 else "normal")
 
-        # --- 6. CWND Collapse Narrative ---
         if edata is not None and not edata.empty and "snd_cwnd" in edata.columns:
             cwnd_vals = edata["snd_cwnd"].dropna().values
             if len(cwnd_vals) >= 2:

@@ -9,10 +9,6 @@ import pandas as pd
 from config import PLOTLY_THEME, SEND_TYPES, RECV_TYPES
 
 
-# ---------------------------------------------------------------------------
-# Narrative detection helpers
-# ---------------------------------------------------------------------------
-
 def _detect_android_iface_enum(real_df):
     """Detect Android interface enumeration pattern: many UDP sockets opened,
     used only for ioctl(), no data transferred, immediately closed."""
@@ -267,9 +263,6 @@ def render(df, all_events, type_counts_raw, n_retrans, meta_data, ebpf_events=No
 
     st.divider()
 
-    # ------------------------------------------------------------------
-    # Automated Narrative — key events auto-detected from the trace
-    # ------------------------------------------------------------------
     findings = _build_narrative(
         real_df,
         n_retrans,

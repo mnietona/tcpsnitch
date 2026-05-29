@@ -5,7 +5,6 @@ from collections import Counter
 import os
 import re
 
-# --- Internal Imports ---
 from config import PLOTLY_THEME, SEND_TYPES, RECV_TYPES, ASYNC_TYPES, CTRL_TYPES
 from loaders import load_session, load_ebpf, load_netlink, load_meta, find_sessions
 from tabs import tab_overview, tab_sockets, tab_send_recv, tab_cwnd_rtt, tab_async, tab_ebpf, tab_netlink, tab_control, tab_global
@@ -40,7 +39,7 @@ div[data-testid="metric-container"] div[data-testid="stMetricValue"] { font-fami
 </style>
 """, unsafe_allow_html=True)
 
-# ── Sidebar ─────────────────────────────────────────────────────────────────────
+# Sidebar
 with st.sidebar:
     st.markdown("## TCPSnitch")
     st.markdown("<p style='color:#8b949e;font-size:0.78rem;'>Network Stack Analyzer</p>", unsafe_allow_html=True)
@@ -62,13 +61,12 @@ with st.sidebar:
         st.error("No traces found. Please check the directory path.")
         st.stop()
 
-    # --- NOUVEAU : Logique de tri par date/heure ---
+    # Logique de tri par date/heure
     def get_timestamp(session_path):
         """Extrait la partie YYYYMMDD_HHMMSS du nom du dossier."""
         basename = os.path.basename(session_path)
-        # Cherche 8 chiffres, un underscore, 6 chiffres à la fin du nom
+
         match = re.search(r'(\d{8}_\d{6})$', basename)
-        # Si ça matche, on retourne le timestamp pour le tri. Sinon on renvoie 0.
         return match.group(1) if match else "00000000_000000"
 
     # Tri des sessions du plus récent au plus ancien
@@ -81,7 +79,6 @@ with st.sidebar:
     st.divider()
     st.caption(f"Path: `{selected_session}`")
 
-# ── Loading & Time Synchronization ───────────────────────────────────────────────
 with st.spinner("Loading traces and synchronizing clocks..."):
     all_events  = load_session(selected_session)
     ebpf_events = load_ebpf(selected_session)
@@ -90,9 +87,7 @@ with st.spinner("Loading traces and synchronizing clocks..."):
 
 df = pd.DataFrame(all_events) if all_events else pd.DataFrame()
 
-# 1. Global T0 Discovery — EPOCH ONLY (LD_PRELOAD + Netlink, both use epoch microseconds)
-# IMPORTANT: eBPF uses monotonic nanoseconds (since boot, ~200,000s) which MUST NOT be mixed
-# with epoch timestamps (~1,775,000,000s). Mixing them breaks all timing.
+# Calcul des t0 et synchronisation des timelines
 t0_candidates_epoch = []
 if not df.empty and "timestamp_usec" in df.columns:
     df["timestamp_usec"] = pd.to_numeric(df["timestamp_usec"], errors="coerce")
@@ -109,29 +104,24 @@ if netlink_events:
 
 global_t0_usec = min(t0_candidates_epoch) if t0_candidates_epoch else 0
 
-# 2. eBPF has its own monotonic clock — compute its own t0 separately
 ebpf_t0_ns = None
 if ebpf_events:
     ns_vals = [e["timestamp_ns"] for e in ebpf_events if "timestamp_ns" in e]
     if ns_vals:
         ebpf_t0_ns = min(ns_vals)
 
-# 3. CENTRAL SYNCHRONIZATION — all events converted to t_ms relative to their respective t0
-# LD_PRELOAD: epoch usec → ms relative to epoch t0
 if not df.empty:
     df["t_ms"] = (df["timestamp_usec"] - global_t0_usec) / 1000.0
 
-# eBPF: monotonic ns → ms relative to eBPF monotonic t0 (self-consistent timeline)
 for ev in ebpf_events:
     if "timestamp_ns" in ev and ebpf_t0_ns is not None:
         ev["t_ms"] = (ev["timestamp_ns"] - ebpf_t0_ns) / 1.0e6
 
-# Netlink: epoch usec → ms relative to epoch t0 (same clock as LD_PRELOAD)
 for ev in netlink_events:
     if "timestamp_usec" in ev:
         ev["t_ms"] = (ev["timestamp_usec"] - global_t0_usec) / 1000.0
 
-# --- ISOLATION DES FAKE CALLS ---
+# Isolation des Fake Call
 if not df.empty:
     is_fake = df.get("fake_call", pd.Series(False, index=df.index)).fillna(False).astype(bool)
     if "details" in df.columns:
@@ -145,7 +135,7 @@ else:
 type_counts = Counter(df_real["type"].tolist()) if not df_real.empty else Counter()
 n_retrans = sum(1 for e in ebpf_events if e.get("type") == "tcp_retransmit")
 
-# ── Dynamic Header ───────────────────────────────────────────────────────────
+# Header
 app_name = meta_data.get("app", "Unknown Application")
 os_name = meta_data.get("os", "Unknown OS")
 kernel_ver = meta_data.get("kernel", "")
@@ -165,7 +155,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Navigation (Tabs) ────────────────────────────────────────────────────────
+# Tabs
 tabs = st.tabs([
     "Overview",
     "Sockets",

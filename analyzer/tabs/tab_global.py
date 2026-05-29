@@ -9,9 +9,6 @@ from plotly.subplots import make_subplots
 from loaders import load_session, load_ebpf, load_netlink, load_meta
 from config import PLOTLY_THEME, SEND_TYPES, RECV_TYPES, ASYNC_TYPES, CTRL_TYPES
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Cross-Session Aggregation & Cross-Layer Correlation
-# ─────────────────────────────────────────────────────────────────────────────
 
 @st.cache_data
 def load_all_sessions(base_dir, sessions, platform_filter="ALL"):
@@ -26,8 +23,6 @@ def load_all_sessions(base_dir, sessions, platform_filter="ALL"):
         session_name = os.path.basename(session_path)
         meta = load_meta(session_path)
         
-        # --- Platform Filtering Logic ---
-        # Determine if the session is Android based on name or meta OS
         is_android = "android" in session_name.lower() or "android" in meta.get("os", "").lower()
         
         if platform_filter == "ANDROID" and not is_android:
@@ -91,7 +86,6 @@ def load_all_sessions(base_dir, sessions, platform_filter="ALL"):
 def render(base_dir, sessions):
     st.markdown('<div class="section-header">Cross-Session Dataset Analysis</div>', unsafe_allow_html=True)
 
-    # --- 0. PLATFORM FILTER ---
     platform_choice = st.radio(
         "Filter Dataset by Platform:",
         options=["All Platforms", "Android Only", "Linux Only"],
@@ -114,9 +108,6 @@ def render(base_dir, sessions):
     if "margin" in theme:
         del theme["margin"]
 
-    # =====================================================================
-    # SECTION 1: DATASET OVERVIEW
-    # =====================================================================
     total_sessions = len(df_meta)
     total_events = len(df_global)
     total_sockets = df_global.groupby(["_session", "_socket_id"]).ngroups
@@ -134,7 +125,6 @@ def render(base_dir, sessions):
 
     st.divider()
 
-    # --- Session Summary Table ---
     st.markdown('<div class="section-header">Session Registry</div>', unsafe_allow_html=True)
     display_meta = df_meta[["session", "app", "os", "kernel", "n_events", "n_sockets", "n_ebpf", "n_netlink"]].copy()
     display_meta.columns = ["Session", "Application", "OS", "Kernel", "API Events", "Sockets", "eBPF Events", "Netlink Events"]
@@ -142,9 +132,6 @@ def render(base_dir, sessions):
 
     st.divider()
 
-    # =====================================================================
-    # SECTION 2: PROTOCOL DISTRIBUTION
-    # =====================================================================
     st.markdown('<div class="section-header">Protocol Distribution</div>', unsafe_allow_html=True)
 
     def get_proto(row):
@@ -191,9 +178,6 @@ def render(base_dir, sessions):
 
     st.divider()
 
-    # =====================================================================
-    # SECTION 3: SYSTEM CALL FREQUENCY
-    # =====================================================================
     st.markdown('<div class="section-header">System Call Frequency Ranking</div>', unsafe_allow_html=True)
 
     real_df = df_global.copy()
@@ -221,9 +205,6 @@ def render(base_dir, sessions):
 
     st.divider()
 
-    # =====================================================================
-    # SECTION 4: DATA VOLUME ANALYSIS
-    # =====================================================================
     st.markdown('<div class="section-header">Aggregated Data Transfer Volume</div>', unsafe_allow_html=True)
 
     df_io = real_df[(real_df["type"].isin(SEND_TYPES + RECV_TYPES)) & (real_df["return_value"] > 0)].copy()
@@ -269,11 +250,6 @@ def render(base_dir, sessions):
 
     st.divider()
 
-
-    # =====================================================================
-    # SECTION 5: SOCKET LIFECYCLE PATTERNS
-    # =====================================================================
-    st.divider()
     st.markdown('<div class="section-header">Socket Lifecycle Patterns</div>', unsafe_allow_html=True)
 
     sock_behaviors = []

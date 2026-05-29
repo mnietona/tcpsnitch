@@ -25,7 +25,7 @@ def render(df, meta_data):
     if "margin" in theme:
         del theme["margin"]
 
-    # Filter real events only
+    # Juste les vrai call
     real_df = df.copy()
     if "fake_call" in real_df.columns:
         real_df = real_df[real_df["fake_call"] != True]
@@ -37,15 +37,13 @@ def render(df, meta_data):
 
     ctrl_df = real_df[real_df["type"].isin(CTRL_TYPES)].copy()
 
-    # =====================================================================
-    # SECTION 1: SOCKET OPTIONS (setsockopt / getsockopt)
-    # =====================================================================
+
     st.markdown('<div class="section-header">Socket Options Usage</div>', unsafe_allow_html=True)
 
     sockopt_df = real_df[real_df["type"].isin(["setsockopt", "getsockopt"])].copy()
 
     if not sockopt_df.empty:
-        # Extract option details
+        # Extraction
         def extract_sockopt(row):
             d = row.get("details", {})
             if not isinstance(d, dict):
@@ -78,7 +76,6 @@ def render(df, meta_data):
 
         st.divider()
 
-        # --- 1a. Top Socket Options by Frequency ---
         col_opts, col_levels = st.columns(2)
 
         with col_opts:
@@ -120,7 +117,6 @@ def render(df, meta_data):
             )
             st.plotly_chart(fig_levels, use_container_width=True)
 
-        # --- 1b. Set vs Get Comparison (Grouped Bar Chart) ---
         st.markdown("#### setsockopt vs getsockopt per Option")
         st.markdown(
             "<p style='font-size:0.72rem;color:#8b949e;'>"
@@ -133,12 +129,10 @@ def render(df, meta_data):
         pivot_wide = pivot.pivot_table(index="optname", columns="type", values="count", fill_value=0)
 
         if not pivot_wide.empty:
-            # Calculate total for sorting
             pivot_wide["_total"] = pivot_wide.sum(axis=1)
             pivot_wide = pivot_wide.sort_values(by="_total", ascending=True).drop(columns=["_total"])
             pivot_wide = pivot_wide.tail(20)  # Top 20 options
 
-            # Prepare traces
             fig_compare = go.Figure()
             
             if "setsockopt" in pivot_wide.columns:
@@ -173,14 +167,12 @@ def render(df, meta_data):
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
             
-            # Optional: Use log scale if there's a huge discrepancy in counts (e.g., 10k gets vs 2 sets)
             max_val = pivot_wide.max().max()
             if max_val > 1000:
                  fig_compare.update_xaxes(type="log", title="Call Count (Log Scale)")
                  
             st.plotly_chart(fig_compare, use_container_width=True)
             
-        # --- 1c. Per-Socket Option Patterns ---
         if "_socket_id" in sockopt_df.columns:
             st.markdown("#### Socket Option Configuration Patterns")
             st.markdown(
@@ -211,9 +203,6 @@ def render(df, meta_data):
     else:
         st.info("No setsockopt/getsockopt calls found in this trace.")
 
-    # =====================================================================
-    # SECTION 2: fcntl ANALYSIS
-    # =====================================================================
     st.divider()
     st.markdown('<div class="section-header">fcntl() Command Analysis</div>', unsafe_allow_html=True)
 
@@ -252,7 +241,6 @@ def render(df, meta_data):
             st.metric("Total fcntl() Calls", f"{len(fcntl_df):,}")
             st.metric("Unique Commands", f"{fcntl_df['cmd'].nunique()}")
 
-            # Check for non-blocking pattern
             n_nonblock = len(fcntl_df[fcntl_df["cmd"].str.contains("NONBLOCK", na=False)])
             if n_nonblock > 0:
                 st.markdown(
@@ -263,9 +251,6 @@ def render(df, meta_data):
     else:
         st.info("No fcntl() calls found in this trace.")
 
-    # =====================================================================
-    # SECTION 3: ioctl ANALYSIS
-    # =====================================================================
     st.divider()
     st.markdown('<div class="section-header">ioctl() Request Analysis</div>', unsafe_allow_html=True)
 
@@ -281,14 +266,6 @@ def render(df, meta_data):
         ioctl_df["request"] = ioctl_df.apply(extract_ioctl_req, axis=1)
 
         req_counts = ioctl_df["request"].value_counts()
-
- #       st.markdown(
-   #           "<p style='font-size:0.75rem;color:#8b949e;'>"
-    #          "ioctl() calls on sockets are used for low-level interface queries. "
-     #         "On Android, ioctl(SIOCGIFADDR) is commonly used to retrieve the IP address "
-     #         "of an interface, as noted in the 2017 analysis.</p>",
-    #          unsafe_allow_html=True,
-    #      )
 
         col_ioctl, col_ioctl_stats = st.columns([2, 1])
 
@@ -316,9 +293,6 @@ def render(df, meta_data):
     else:
         st.info("No ioctl() calls found in this trace.")
 
-    # =====================================================================
-    # SECTION 4: CONFIGURATION TIMELINE
-    # =====================================================================
     st.divider()
     st.markdown('<div class="section-header">Control Plane Activity Timeline</div>', unsafe_allow_html=True)
     st.markdown(
@@ -363,9 +337,6 @@ def render(df, meta_data):
     else:
         st.info("No control plane events with timing data.")
 
-    # =====================================================================
-    # SECTION 5: ERROR ANALYSIS
-    # =====================================================================
     ctrl_errors = ctrl_df[ctrl_df["return_value"] < 0].copy() if not ctrl_df.empty else pd.DataFrame()
 
     if not ctrl_errors.empty:
@@ -383,7 +354,6 @@ def render(df, meta_data):
 
             st.dataframe(err_counts, use_container_width=True, hide_index=True)
 
-    # --- Raw Data ---
     with st.expander("View Raw Control Plane Events"):
         if not ctrl_df.empty:
             display_cols = ["t_ms", "type", "return_value", "_socket_id", "details"]

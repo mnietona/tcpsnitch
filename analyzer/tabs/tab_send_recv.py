@@ -18,12 +18,10 @@ def render(df):
         st.info("No data available for analysis.")
         return
 
-    # ---  Robust Protocol Inference ---
     protocol_map = {}
     for sid, group in df.groupby("_socket_id"):
         proto_raw = "Unknown"
         
-        # Tenter de lire depuis les métadonnées sock_info
         for _, row in group.dropna(subset=['details']).iterrows():
             details = row['details']
             if isinstance(details, dict) and 'sock_info' in details:
@@ -51,7 +49,6 @@ def render(df):
         elif proto == "SOCK_DGRAM": protocol_map[sid] = "UDP"
         else: protocol_map[sid] = "Other"
 
-    # --- Filter valid data transfers ---
     # On ne garde que les appels de lecture/écriture qui ont retourné un nombre d'octets > 0
     df_data = df[
         (df['type'].isin(SEND_TYPES + RECV_TYPES)) & 
@@ -63,21 +60,16 @@ def render(df):
         st.warning("No successful data transfer events (send/recv > 0) found in this trace.")
         return
 
-    # Enrichissement du DataFrame avec nos nouvelles colonnes
     df_data['Protocol'] = df_data['_socket_id'].map(protocol_map)
     df_data['Direction'] = df_data['type'].apply(lambda x: 'TX (Send)' if x in SEND_TYPES else 'RX (Receive)')
     df_data['Payload Size (Bytes)'] = df_data['return_value']
 
-    # On trie d'abord par socket, puis par direction, puis chronologiquement
     df_data = df_data.sort_values(by=['_socket_id', 'Direction', 't_ms'])
     
-    # diff() calcule la différence de temps écoulé avec la ligne précédente (donc le paquet précédent)
     df_data['Inter-arrival Time (ms)'] = df_data.groupby(['_socket_id', 'Direction'])['t_ms'].diff()
     
-    # Si deux événements se produisent dans la même milliseconde, on les sépare artificiellement de 1 microseconde (0.001 ms).
     df_data.loc[df_data['Inter-arrival Time (ms)'] == 0.0, 'Inter-arrival Time (ms)'] = 0.001
 
-    # --- 4. KPIs ---
     c1, c2, c3, c4 = st.columns(4)
     with c1: st.metric("Total Calls (TX/RX)", f"{len(df_data):,}")
     with c2: st.metric("Avg Payload Size", f"{df_data['Payload Size (Bytes)'].mean():.0f} B")
@@ -89,7 +81,6 @@ def render(df):
 
     st.divider()
 
-    # --- LÉGENDE GLOBALE POUR LES GRAPHIQUES ---
     st.markdown(
         "<p style='font-size:0.75rem;color:#8b949e;'>"
         "<b>Legend:</b> Colors = protocol (Blue = TCP, Orange = UDP). "
@@ -97,7 +88,6 @@ def render(df):
         unsafe_allow_html=True,
     )
 
-    # ---  Graph 1 : Payload Sizes CDF ---
     st.markdown("### Cumulative Distribution of Payload Sizes")
     st.markdown("<p style='font-size:0.75rem; color:#8b949e;'>Read as: 'X% of API calls transfer fewer than Y bytes'. The X-axis is logarithmic.</p>", unsafe_allow_html=True)
     
@@ -127,7 +117,6 @@ def render(df):
     
     st.plotly_chart(fig_size, use_container_width=True)
 
-    # --- Graph 2 : Inter-arrival CDF ---
     st.markdown("### Cumulative Distribution of Inter-arrival Times")
     st.markdown("<p style='font-size:0.75rem; color:#8b949e;'>Read as: 'Time elapsed between two consecutive TX (or RX) calls on the same socket'.</p>", unsafe_allow_html=True)
     
@@ -160,7 +149,6 @@ def render(df):
     else:
         st.info("No consecutive packets on the same socket/direction found (e.g., app only made single isolated requests).")
 
-    # --- Breakdown Table ---
     with st.expander("View Detailed Transfer Statistics"):
         stats_df = df_data.groupby(['Protocol', 'Direction']).agg(
             Count=('type', 'count'),

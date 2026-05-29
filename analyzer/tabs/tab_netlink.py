@@ -6,12 +6,7 @@ from plotly.subplots import make_subplots
 from config import PLOTLY_THEME
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _extract_details(df_nl):
-    """Flatten nested 'details' dict into top-level columns."""
     if "details" not in df_nl.columns:
         return df_nl
 
@@ -33,7 +28,6 @@ def _extract_details(df_nl):
 
 
 def _build_iface_label(if_index, ips):
-    """Heuristic label from if_index and IP addresses seen."""
     if if_index == 1:
         return "lo"
     has_link_local = any(
@@ -45,45 +39,36 @@ def _build_iface_label(if_index, ips):
     )
     has_lte = any(str(ip).startswith("100.") or str(ip).startswith("fd7a") for ip in ips)
     if has_lte:
-        return f"if{if_index} (tailscale/LTE)"
+        return f"if{if_index} (LTE)"
     if has_private and has_link_local:
         return f"if{if_index} (wlan/eth)"
     return f"if{if_index}"
 
 
 def _detect_network_events(df_nl, gap_ms=2000):
-    """
-    Detect network disruption windows:
-    - A DEL burst (DEL_ADDR or DEL_ROUTE on a non-loopback interface)
-      followed by a NEW burst after a gap > gap_ms → WiFi/LTE handover.
-    Returns a list of dicts: {type, t_start_ms, t_end_ms, label}
-    """
     events = []
 
     addr_route = df_nl[
         df_nl["msg_type"].isin(["DEL_ADDR", "DEL_ROUTE", "NEW_ADDR", "NEW_ROUTE"])
-        & (df_nl["if_index"] != 1)     # exclude loopback
+        & (df_nl["if_index"] != 1)
         & (df_nl["t_ms"].notna())
     ].copy().sort_values("t_ms")
 
     if addr_route.empty:
         return events
 
-    # Separate DEL and NEW bursts
     dels = addr_route[addr_route["msg_type"].str.startswith("DEL")]["t_ms"].values
     news = addr_route[addr_route["msg_type"].str.startswith("NEW")]["t_ms"].values
 
     if len(dels) == 0 or len(news) == 0:
         return events
 
-    # First significant DEL after initial dump (t > 500ms)
     real_dels = dels[dels > 500]
     if len(real_dels) == 0:
         return events
 
     disconnect_t = real_dels.min()
 
-    # First NEW after the disconnect
     reconnect_candidates = news[news > disconnect_t]
     if len(reconnect_candidates) == 0:
         return events
@@ -100,10 +85,6 @@ def _detect_network_events(df_nl, gap_ms=2000):
         })
     return events
 
-
-# ---------------------------------------------------------------------------
-# Main render
-# ---------------------------------------------------------------------------
 
 def render(netlink_events, df, meta_data):
     st.markdown(
@@ -139,16 +120,13 @@ def render(netlink_events, df, meta_data):
     theme = PLOTLY_THEME.copy()
     theme.pop("margin", None)
 
-    # ------------------------------------------------------------------
-    # 1. Global Metrics
-    # ------------------------------------------------------------------
+
     n_new_addr  = (df_nl["msg_type"] == "NEW_ADDR").sum()
     n_del_addr  = (df_nl["msg_type"] == "DEL_ADDR").sum()
     n_new_route = (df_nl["msg_type"] == "NEW_ROUTE").sum()
     n_del_route = (df_nl["msg_type"] == "DEL_ROUTE").sum()
     n_interfaces = df_nl["if_index"].nunique()
 
-    # Detect disruption window
     disruptions = _detect_network_events(df_nl)
     disruption_label = (
         disruptions[0]["label"] if disruptions else "None detected"
@@ -171,9 +149,6 @@ def render(netlink_events, df, meta_data):
 
     st.divider()
 
-    # ------------------------------------------------------------------
-    # 2. Narrative Banner (if disruption detected)
-    # ------------------------------------------------------------------
     if disruptions:
         d = disruptions[0]
         st.markdown(
@@ -193,9 +168,6 @@ def render(netlink_events, df, meta_data):
             unsafe_allow_html=True,
         )
 
-    # ------------------------------------------------------------------
-    # 3. Full Event Timeline (ADDR + ROUTE, all types)
-    # ------------------------------------------------------------------
     st.markdown(
         '<div class="section-header">Network Event Timeline</div>',
         unsafe_allow_html=True,
@@ -209,7 +181,6 @@ def render(netlink_events, df, meta_data):
         unsafe_allow_html=True,
     )
 
-    # Build interface labels
     iface_labels = {}
     for iface, grp in df_nl.groupby("if_index"):
         ips = grp["ip"].dropna().unique().tolist()
@@ -223,7 +194,6 @@ def render(netlink_events, df, meta_data):
 
     df_nl["iface_label"] = df_nl["if_index"].map(iface_labels)
 
-    # Color / symbol map for all 4 event types
     style_map = {
         "NEW_ADDR":  {"color": "#3fb950", "symbol": "triangle-up",   "size": 14},
         "DEL_ADDR":  {"color": "#ff7b72", "symbol": "triangle-down", "size": 14},
@@ -265,7 +235,6 @@ def render(netlink_events, df, meta_data):
             text=hover_text,
         ))
 
-    # Shade disruption windows
     for d in disruptions:
         fig_tl.add_vrect(
             x0=d["t_start_ms"], x1=d["t_end_ms"],
@@ -292,9 +261,6 @@ def render(netlink_events, df, meta_data):
 
     st.divider()
 
-    # ------------------------------------------------------------------
-    # 4. Per-Interface Summary Table
-    # ------------------------------------------------------------------
     st.markdown(
         '<div class="section-header">Per-Interface Summary</div>',
         unsafe_allow_html=True,
@@ -323,9 +289,6 @@ def render(netlink_events, df, meta_data):
 
     st.divider()
 
-    # ------------------------------------------------------------------
-    # 5. Event Type Distribution
-    # ------------------------------------------------------------------
     st.markdown(
         '<div class="section-header">Event Type Distribution</div>',
         unsafe_allow_html=True,
@@ -345,9 +308,6 @@ def render(netlink_events, df, meta_data):
     )
     st.plotly_chart(fig_bar, use_container_width=True)
 
-    # ------------------------------------------------------------------
-    # 6. Correlation with Socket API Activity
-    # ------------------------------------------------------------------
     if not df.empty and "t_ms" in df.columns:
         st.divider()
         st.markdown(
@@ -362,7 +322,6 @@ def render(netlink_events, df, meta_data):
             unsafe_allow_html=True,
         )
 
-        # Bin socket events
         df_copy = df.copy()
         df_copy["bin_ms"] = (df_copy["t_ms"] // 500) * 500
         sock_activity = df_copy.groupby("bin_ms").size().reset_index(name="api_calls")
@@ -376,7 +335,6 @@ def render(netlink_events, df, meta_data):
             marker_color="rgba(88,166,255,0.3)",
         ))
 
-        # Overlay Netlink events as vertical lines — only real ones (t > 100ms)
         real_nl = df_nl[df_nl["t_ms"] > 100]
         for _, row in real_nl.iterrows():
             color = style_map.get(row["msg_type"], {}).get("color", "#8b949e")
@@ -385,7 +343,6 @@ def render(netlink_events, df, meta_data):
                 line_color=color, line_width=1, opacity=0.8,
             )
 
-        # Shade disruption
         for d in disruptions:
             fig_corr.add_vrect(
                 x0=d["t_start_ms"], x1=d["t_end_ms"],
@@ -406,9 +363,6 @@ def render(netlink_events, df, meta_data):
         )
         st.plotly_chart(fig_corr, use_container_width=True)
 
-    # ------------------------------------------------------------------
-    # 7. Raw Data
-    # ------------------------------------------------------------------
     with st.expander("View Raw Netlink Events"):
         cols_show = [c for c in ["t_ms", "msg_type", "iface_label", "family", "ip", "dst", "gateway"]
                      if c in df_nl.columns]
