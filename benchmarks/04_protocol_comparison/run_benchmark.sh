@@ -10,7 +10,7 @@ OUTPUT_BASE="output"
 RAW_CSV="$OUTPUT_BASE/protocol_raw.csv"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$SCRIPT_DIR"g
 
 rm -rf "$OUTPUT_BASE"
 mkdir -p "$OUTPUT_BASE/runs"

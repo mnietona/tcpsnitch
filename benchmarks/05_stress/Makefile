@@ -1,5 +1,3 @@
-# Makefile — Benchmark 5 : Stress test
-
 .PHONY: all run analyze clean check-deps
 
 PYTHON := python3
@@ -7,24 +5,19 @@ PYTHON := python3
 all: check-deps run analyze
 
 check-deps:
-	@echo "── Vérification des dépendances ──────────────────────"
-	@command -v tcpsnitch  >/dev/null || (echo "❌ tcpsnitch manquant" && exit 1)
-	@command -v pgrep      >/dev/null || (echo "❌ pgrep manquant — sudo apt install procps" && exit 1)
-	@$(PYTHON) -c "import ctypes" 2>/dev/null || (echo "❌ ctypes manquant" && exit 1)
+	@command -v tcpsnitch  >/dev/null || (echo " tcpsnitch manquant" && exit 1)
+	@command -v pgrep      >/dev/null || (echo " pgrep manquant — sudo apt install procps" && exit 1)
+	@command -v gcc        >/dev/null || (echo " gcc manquant — requis pour les scénarios D et E" && exit 1)
+	@$(PYTHON) -c "import ctypes" 2>/dev/null || (echo " ctypes manquant" && exit 1)
 	@$(PYTHON) -c "import matplotlib" 2>/dev/null || \
-		echo "⚠️  matplotlib absent — graphique désactivé"
-	@echo "✅ Dépendances OK"
+		echo " matplotlib absent — graphique désactivé"
+	@echo "Dépendances OK"
 
 run: check-deps
-	@echo "── Lancement de la collecte (≈ 15 min) ───────────────"
-	@echo "⚠️  Le scénario C dure 10 min — ne pas interrompre"
 	@bash run_benchmark.sh
 
 analyze: 
-	@echo "── Analyse des résultats ─────────────────────────────"
 	@$(PYTHON) analyze.py
 
 clean:
-	@echo "── Nettoyage ─────────────────────────────────────────"
-	@sudo rm -rf output/ /tmp/stress_*.py
-	@echo "✅ output/ supprimé"
+	@sudo rm -rf output/ /tmp/stress_*.py /tmp/stress_*.c /tmp/stress_e /tmp/stress_d

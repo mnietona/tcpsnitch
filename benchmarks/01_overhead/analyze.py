@@ -27,17 +27,15 @@ def main():
     for cond, values in raw_data.items():
         if not values: continue
         stats[cond] = {
-            "duration": statistics.mean([v["ms"] for v in values]) / 1000.0, # s
+            "duration": statistics.mean([v["ms"] for v in values]) / 1000.0,
             "cpu": statistics.mean([v["cpu"] for v in values]),
-            "mem": statistics.mean([v["mem"] for v in values]) / 1024.0 # MB
+            "mem": statistics.mean([v["mem"] for v in values]) / 1024.0
         }
 
-    # Calcul de la RAM totale (approximatif pour le % du tableau)
-    # On va afficher les valeurs absolues ou simuler un % si vous préférez.
-    # Ici on suit le format de votre tableau :
+    # Génération d'un Tableau + Rapport
     
     table = [
-        "| Condition de test              | Durée (s) | Usage CPU (%) | Usage RAM (MB) |",
+        "| Condition de test               | Durée (s) | Usage CPU (%) | Usage RAM (MB) |",
         "|--------------------------------|-----------|---------------|----------------|",
         f"| 1. Baseline (Sans outil)       | {stats['baseline']['duration']:>9.2f} |      N/A      |      N/A       |",
         f"| 2. TCPSnitch (Standard)        | {stats['standard']['duration']:>9.2f} | {stats['standard']['cpu']:>12.2f}% | {stats['standard']['mem']:>13.2f}  |",
@@ -46,19 +44,17 @@ def main():
     ]
 
     report = [
-        "=== RAPPORT D'ÉVALUATION DES PERFORMANCES (N=30) ===",
+        "=== BENCHMARK RESULTS (N=30) ===",
         "\n".join(table),
-        "\nSYNTHÈSE :",
-        f"- Surcoût CPU eBPF pur : {stats['ebpf']['cpu'] - stats['standard']['cpu']:.3f}%",
-        f"- Surcoût CPU eBPF sous congestion : {stats['ebpf_loss']['cpu'] - stats['ebpf']['cpu']:.3f}%",
-        "\nL'outil reste extrêmement léger (< 1% CPU) même sous forte perte de paquets."
+        "\nMETRICS DERIVATIONS:",
+        f"  - Delta CPU (eBPF vs Standard) : {stats['ebpf']['cpu'] - stats['standard']['cpu']:+.3f}%",
+        f"  - Delta CPU (Loss 5% vs eBPF)  : {stats['ebpf_loss']['cpu'] - stats['ebpf']['cpu']:+.3f}%"
     ]
 
     with open(REPORT_TXT, "w") as f:
-        f.write("\n".join(report))
+        f.write("\n".join(report) + "\n")
     
     print("\n".join(report))
-    print(f"\n✅ Rapport sauvegardé dans {REPORT_TXT}")
 
 if __name__ == "__main__":
     main()

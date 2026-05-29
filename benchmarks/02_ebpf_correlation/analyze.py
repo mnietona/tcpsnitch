@@ -42,7 +42,7 @@ def main():
     with open(REPORT_TXT, "w") as f:
         f.write("\n".join(lines))
         
-    print(f"\n✅ Analyse terminée. Lisez {REPORT_TXT}")
+    print(f"\n Analyse terminée.")
 
 if __name__ == "__main__":
     main()

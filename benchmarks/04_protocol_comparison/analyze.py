@@ -8,7 +8,7 @@ try:
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
-    print("⚠️  matplotlib absent — graphique désactivé")
+    print("matplotlib absent — graphique désactivé")
 
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR  = os.path.join(SCRIPT_DIR, "output")
@@ -82,7 +82,6 @@ def generate_graph(stats, hypotheses, filepath):
     fig, axes = plt.subplots(2, 2, figsize=(16, 11))
     fig.suptitle("Benchmark 4 — Comparaison Protocoles TCP/UDP", fontsize=14, fontweight="bold")
 
-    # Panel 1: Courbes
     ax1 = axes[0][0]
     for proto in ["http1", "http2"]:
         means = [stats.get((proto, l), {}).get("mean", 0) for l in LOSS_RATES]
@@ -91,7 +90,6 @@ def generate_graph(stats, hypotheses, filepath):
                      color=PROTO_COLORS[proto], label=f"{PROTO_LABELS[proto]}", capsize=5, linewidth=2)
     ax1.set_title("Retransmissions = f(taux de perte)"); ax1.legend(); ax1.grid(alpha=0.4)
 
-    # Panel 2: Barres groupées
     ax2 = axes[0][1]
     width = 0.35
     for i, proto in enumerate(["http1", "http2"]):
@@ -101,7 +99,6 @@ def generate_graph(stats, hypotheses, filepath):
     ax2.set_xticklabels([f"{l}%" for l in LOSS_RATES])
     ax2.set_title("Comparaison par taux de perte"); ax2.legend(); ax2.grid(alpha=0.4)
 
-    # Panel 3: Ratio
     ax3 = axes[1][0]
     ratios = []
     for l in LOSS_RATES:
@@ -113,7 +110,6 @@ def generate_graph(stats, hypotheses, filepath):
     ax3.axhline(1.0, color="black", linestyle="--", label="Égalité")
     ax3.set_title("Ratio HTTP/2 vs HTTP/1.1 (<1 = HTTP/2 gagne)"); ax3.legend(); ax3.grid(alpha=0.4)
 
-    # Panel 4: HTTP/3
     ax4 = axes[1][1]
     h3_means = [stats.get(("http3", l), {}).get("mean", 0) for l in LOSS_RATES]
     ax4.bar([f"{l}%" for l in LOSS_RATES], h3_means, color=PROTO_COLORS["http3"], label="HTTP/3")
@@ -129,12 +125,12 @@ def main():
     
     lines = ["=== BENCHMARK 4 : COMPARAISON DE PROTOCOLES ===\n"]
     for h, res in hypotheses.items():
-        v = "✅" if res["verified"] else "⚠️"
+        v = "Oui" if res["verified"] else "Non"
         lines.append(f"{v} {h} vérifiée: {res['verified']}")
     
     with open(REPORT_TXT, "w") as f: f.write("\n".join(lines))
     generate_graph(stats, hypotheses, GRAPH_PNG)
-    print(f"\n✅ Analyse terminée. Consultez {GRAPH_PNG} et {REPORT_TXT}")
+    print(f"\nAnalyse terminée")
 
 if __name__ == "__main__":
     main()

@@ -119,7 +119,6 @@ with open(csv_path, "a") as f:
 PYEOF
 }
 
-# --- SCÉNARIOS PYTHON ---
 
 PY_SCRIPT_A="/tmp/netlink_test_a.py"
 cat << 'EOF' > $PY_SCRIPT_A
@@ -176,7 +175,7 @@ EOF
 export TEST_IP
 export TEST_IF
 
-echo "── Scénario A : Complétude ───────────────────────────────"
+echo "Scénario A : Complétude"
 mkdir -p "$OUTPUT_BASE/scenario_A"
 export EVENTS=$EVENTS_PER_RUN_A
 for i in $(seq 1 $RUNS_A); do
@@ -185,9 +184,9 @@ for i in $(seq 1 $RUNS_A); do
     sudo -E tcpsnitch -l 0 -u 100000 -d "$OUTPUT_BASE/scenario_A/run_${i}" -- python3 "$PY_SCRIPT_A" >/dev/null 2>&1 || true
     analyze_netlink_json "$OUTPUT_BASE/scenario_A/run_${i}" "$i" "A" "$EVENTS_PER_RUN_A" "$EVENTS_PER_RUN_A" ""
 done
-echo -e "\n  ✅ Scénario A terminé\n"
+echo -e "\n Scénario A terminé\n"
 
-echo "── Scénario B : Latence ───────────────────────────────────"
+echo "Scénario B : Latence"
 mkdir -p "$OUTPUT_BASE/scenario_B"
 export EVENTS=$EVENTS_PER_RUN_B
 for i in $(seq 1 $RUNS_B); do
@@ -197,9 +196,9 @@ for i in $(seq 1 $RUNS_B); do
     sudo -E tcpsnitch -l 0 -u 100000 -d "$OUTPUT_BASE/scenario_B/run_${i}" -- python3 "$PY_SCRIPT_B" >/dev/null 2>&1 || true
     analyze_netlink_json "$OUTPUT_BASE/scenario_B/run_${i}" "$i" "B" "$EVENTS_PER_RUN_B" "$EVENTS_PER_RUN_B" "$TS_FILE"
 done
-echo -e "\n  ✅ Scénario B terminé\n"
+echo -e "\n Scénario B terminé\n"
 
-echo "── Scénario C : Rafale ────────────────────────────────────"
+echo "Scénario C : Rafale"
 mkdir -p "$OUTPUT_BASE/scenario_C"
 export EVENTS=$EVENTS_PER_RUN_C
 for i in $(seq 1 $RUNS_C); do
@@ -208,4 +207,4 @@ for i in $(seq 1 $RUNS_C); do
     sudo -E tcpsnitch -l 0 -u 100000 -d "$OUTPUT_BASE/scenario_C/run_${i}" -- python3 "$PY_SCRIPT_C" >/dev/null 2>&1 || true
     analyze_netlink_json "$OUTPUT_BASE/scenario_C/run_${i}" "$i" "C" "$EVENTS_PER_RUN_C" "$EVENTS_PER_RUN_C" ""
 done
-echo -e "\n  ✅ Scénario C terminé\n"
+echo -e "\n Scénario C terminé\n"

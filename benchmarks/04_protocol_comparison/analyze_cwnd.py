@@ -41,14 +41,12 @@ def main():
     if not res or res[1] < 5: return
         
     target_dir, _ = res
-    print(f" 📂 Extraction des données brutes séparées depuis : {os.path.basename(target_dir)}")
+    print(f" Extraction des données brutes séparées depuis : {os.path.basename(target_dir)}")
 
     json_files = glob.glob(os.path.join(target_dir, "[0-9]*.json"))
     ebpf_file = os.path.join(target_dir, "ebpf_events.jsonl")
 
-    # =========================================
-    # 1. LECTURE DES DONNÉES TCP_INFO (POLLING)
-    # =========================================
+    # Polling
     timestamps_cwnd = []
     for jf in json_files:
         with open(jf) as f:
@@ -67,9 +65,7 @@ def main():
 
     timestamps_cwnd.sort(key=lambda x: x[0])
     
-    # ==============================================
-    # 2. LECTURE DES DONNÉES EBPF (ÉVÉNEMENTS NOYAU)
-    # ==============================================
+    # Noyau (eBPF)
     ebpf_events = []
     if os.path.exists(ebpf_file):
         with open(ebpf_file) as f:
@@ -86,11 +82,9 @@ def main():
                 
     ebpf_events.sort(key=lambda x: x[0])
 
-    # ========================
-    # SYNCHRONISATION DU TEMPS 
-    # ========================
+
+    # Temps synchroniser
     
-    # 1. Base de temps et valeurs pour le graphique 1 (TCP)
     if timestamps_cwnd:
         start_tcp_usec = timestamps_cwnd[0][0]
         t_tcp_ms = [(t - start_tcp_usec) / 1000.0 for t, c in timestamps_cwnd]
@@ -98,7 +92,6 @@ def main():
     else:
         t_tcp_ms, c_tcp_val = [], []
 
-    # 2. Base de temps et valeurs pour le graphique 2 (eBPF)
     if ebpf_events:
         start_ebpf_ns = ebpf_events[0][0]
         t_ebpf_ms = [(t - start_ebpf_ns) / 1000000.0 for t, c in ebpf_events]
@@ -106,9 +99,7 @@ def main():
     else:
         t_ebpf_ms, c_ebpf_val = [], []
 
-    # ========================================
-    # GRAPHIQUE 1 : TCP_INFO UNIQUEMENT (BLEU)
-    # ========================================
+
     fig1, ax1 = plt.subplots(figsize=(14, 6))
     
     if t_tcp_ms:
@@ -127,17 +118,12 @@ def main():
     fig1.savefig(out_tcp, dpi=200)
     plt.close(fig1)
 
-    # ==============================================
-    # GRAPHIQUE 2 : EBPF UNIQUEMENT (MAUVE + POINTS)
-    # ==============================================
     fig2, ax2 = plt.subplots(figsize=(14, 6))
     
     if t_ebpf_ms:
-        # Trace la ligne reliant les points eBPF
         ax2.step(t_ebpf_ms, c_ebpf_val, where='post', color='#8e44ad', linewidth=2.5, label="snd_cwnd lu au moment de la perte")
         ax2.fill_between(t_ebpf_ms, c_ebpf_val, step="post", alpha=0.15, color='#9b59b6')
         
-        # Ajoute les points visibles pour chaque événement
         ax2.plot(t_ebpf_ms, c_ebpf_val, marker='o', color='#c0392b', markersize=8, markeredgecolor='white', linestyle='None', zorder=5, label="Événement eBPF (tcp_retransmit)")
         
     ax2.axhline(y=10, color='#95a5a6', linestyle='--', linewidth=1.5, label="Initial cwnd (10)")
@@ -152,17 +138,12 @@ def main():
     fig2.savefig(out_ebpf, dpi=200)
     plt.close(fig2)
     
-    # ========================================
-    # GRAPHIQUE FINAL : SUPERPOSITION (COMPARISON)
-    # ========================================
     fig3, ax3 = plt.subplots(figsize=(14, 6))
 
     if t_tcp_ms:
-        # On trace le polling (tcp_info) en fond (bleu clair)
         ax3.step(t_tcp_ms, c_tcp_val, where='post', color='#2980b9', alpha=0.4, linewidth=1.5, label="Polling (Espace Utilisateur)")
         
     if t_ebpf_ms:
-        # On trace les captures eBPF par-dessus (Mauve + Points Rouges)
         ax3.step(t_ebpf_ms, c_ebpf_val, where='post', color='#8e44ad', linewidth=2, label="Capture noyau (eBPF)")
         ax3.plot(t_ebpf_ms, c_ebpf_val, marker='o', color='#c0392b', markersize=6, markeredgecolor='white', linestyle='None', zorder=5, label="Instant de retransmission")
 
@@ -178,9 +159,9 @@ def main():
     fig3.savefig(out_comp, dpi=250) # Haute résolution pour le mémoire
     plt.close(fig3)
 
-    print(f" ✅ Graphique 1 (TCP Info) généré : {out_tcp}")
-    print(f" ✅ Graphique 2 (eBPF) généré     : {out_ebpf}")
-    print(f" ✅ Graphique de comparaison généré : {out_comp}")
+    print(f"Graphique 1 (TCP Info) généré : {out_tcp}")
+    print(f"Graphique 2 (eBPF) généré     : {out_ebpf}")
+    print(f"Graphique de comparaison généré : {out_comp}")
 
 if __name__ == "__main__":
     main()

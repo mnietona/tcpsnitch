@@ -13,7 +13,7 @@ mkdir -p "$OUTPUT_BASE"
 echo "run,scenario,metric,value,h0_threshold,h0_ok" > "$RAW_CSV"
 
 echo "============================================================"
-echo " Benchmark 5 — Robustesse sous charge"
+echo " Benchmark 5 — Robustesse sous charge & Faille Architecturale"
 echo "============================================================"
 echo ""
 
@@ -27,7 +27,6 @@ progress() {
     printf "\r  [%s] %3d%% (%d/%d) %-40s" "$bar" "$pct" "$current" "$total" "$label"
 }
 
-# ── Scénario A : Intégrité JSON (100 connexions simultanées) ──
 echo "── Scénario A : Intégrité JSON (100 connexions simultanées) ──"
 mkdir -p "$OUTPUT_BASE/scenario_A"
 
@@ -85,9 +84,8 @@ with open(csv_path, "a") as f:
     f.write(f"{run},A,socket_ratio,{ratio},0.99,{'1' if ratio>=0.99 else '0'}\n")
 PYEOF
 done
-echo -e "\n  ✅ Scénario A terminé\n"
+echo -e "\n  Scénario A terminé\n"
 
-# ── Scénario B : Ratio 1:1 (50 connexions séquentielles) ─────
 echo "── Scénario B : Ratio 1:1 (50 connexions séquentielles) ─────"
 mkdir -p "$OUTPUT_BASE/scenario_B"
 
@@ -131,9 +129,8 @@ with open(csv_path, "a") as f:
     f.write(f"{run},B,socket_file_ratio,{ratio},0.99,{'1' if ratio >= 0.99 else '0'}\n")
 PYEOF
 done
-echo -e "\n  ✅ Scénario B terminé\n"
+echo -e "\n  Scénario B terminé\n"
 
-# ── Scénario C : Mémoire (10 minutes) ────────────────────
 echo "── Scénario C : Stabilité mémoire (10 min de transferts) ────"
 mkdir -p "$OUTPUT_BASE/scenario_C"
 DURATION_SEC=600
@@ -179,9 +176,7 @@ while kill -0 $SUDO_PID 2>/dev/null; do
     fi
     sleep 15
 done
-echo -e "\n  ✅ Données brutes collectées, intégration au rapport...\n"
 
-# ---> LE BLOC MANQUANT QUI INJECTE DANS LE CSV <---
 python3 - "$MEM_LOG" "$RAW_CSV" << 'PYEOF'
 import csv, sys, os
 
@@ -215,57 +210,104 @@ with open(csv_path, "a") as f:
     f.write(f"1,C,n_samples,{len(rss_values)},10,{'1' if len(rss_values)>=10 else '0'}\n")
 PYEOF
 
-echo -e "  ✅ Scénario C terminé\n"
+echo -e "\n  Scénario C terminé\n"
 
-# ── Scénario D : close_range ───────────────────────────────────
-echo "── Scénario D : close_range() — 500 sockets en masse ────────"
-mkdir -p "$OUTPUT_BASE/scenario_D"
+echo "── Scénario E : close_range() — Fermeture PARTIELLE (100 sockets) ──"
+DIR_E="$OUTPUT_BASE/scenario_E_partiel"
+mkdir -p "$DIR_E"
 
-cat > /tmp/stress_d.py << 'PYEOF'
-import socket, ctypes, ctypes.util
-sockets = [socket.socket(socket.AF_INET, socket.SOCK_STREAM) for _ in range(500)]
-fds = [s.fileno() for s in sockets]
-libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
-if fds: libc.close_range(ctypes.c_uint(min(fds)), ctypes.c_uint(max(fds)), ctypes.c_uint(0))
-PYEOF
+cat > /tmp/stress_e.c << 'EOF'
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <syscall.h>
+
+#ifndef SYS_close_range
+#define SYS_close_range 436 
+#endif
+
+int main() {
+    int fds[100];
+    
+    // 1. Création de 100 sockets
+    for(int i = 0; i < 100; i++) {
+        fds[i] = socket(AF_INET, SOCK_STREAM, 0);
+    }
+
+    // 2. Fermeture MASSIVE MAIS PARTIELLE via close_range
+    // On ferme uniquement la première moitié (les 50 premiers sockets)
+    if (fds[0] != -1 && fds[49] != -1) {
+         syscall(SYS_close_range, fds[0], fds[49], 0);
+    }
+
+    // On laisse le temps à l'outil de générer les traces
+    sleep(1); 
+    
+    // Fermeture propre du reste
+    for(int i = 50; i < 100; i++) {
+        if(fds[i] != -1) close(fds[i]);
+    }
+
+    return 0;
+}
+EOF
+
+gcc -O2 /tmp/stress_e.c -o /tmp/stress_e
+
+RUNS_E=30
+for i in $(seq 1 $RUNS_E); do
+    progress $i $RUNS_E "Run $i/$RUNS_E (Partiel)"
+    { sudo tcpsnitch -e -l 0 -f 5 -u 500000 -d "$DIR_E/run_${i}" -- /tmp/stress_e 2>> "$LOG_E" || true; }
+    sleep 2 
+done
+echo -e "\n  Scénario E terminé\n"
+
+echo "── Scénario D : close_range() — Fermeture TOTALE (300 sockets) ─────"
+DIR_D="$OUTPUT_BASE/scenario_D_total"
+mkdir -p "$DIR_D"
+
+cat > /tmp/stress_d.c << 'EOF'
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <syscall.h>
+
+#ifndef SYS_close_range
+#define SYS_close_range 436 
+#endif
+
+int main() {
+    int fds[300];
+    int min_fd = 999999;
+    int max_fd = -1;
+
+    for(int i = 0; i < 300; i++) {
+        fds[i] = socket(AF_INET, SOCK_STREAM, 0);
+        if(fds[i] != -1) {
+            if(fds[i] < min_fd) min_fd = fds[i];
+            if(fds[i] > max_fd) max_fd = fds[i];
+        }
+    }
+
+    // Tir de barrage massif
+    if(max_fd != -1) {
+        syscall(SYS_close_range, min_fd, max_fd, 0);
+    }
+
+    return 0; 
+}
+EOF
+
+gcc -O2 /tmp/stress_d.c -o /tmp/stress_d
 
 RUNS_D=30
 for i in $(seq 1 $RUNS_D); do
-    progress $i $RUNS_D "run $i/$RUNS_D"
-    { sudo tcpsnitch -e -l 0 -u 500000 -d "$OUTPUT_BASE/scenario_D/run_${i}" -- python3 /tmp/stress_d.py >/dev/null 2>&1 || true; }
-    
-    python3 - "$OUTPUT_BASE/scenario_D/run_${i}" "$i" "$RAW_CSV" << 'PYEOF'
-import json, sys, os, glob
-session_dir, run, csv_path = sys.argv[1:]
-actual = next((root for root, dirs, files in os.walk(session_dir) if any(f.endswith(".json") and f[0].isdigit() for f in files)), None)
-
-if not actual:
-    with open(csv_path, "a") as f: f.write(f"{run},D,close_coverage_pct,0,100,0\n")
-    sys.exit(0)
-
-json_files = glob.glob(os.path.join(actual, "[0-9]*.json"))
-sockets_with_close, sockets_without, corrupted = 0, 0, 0
-
-for jf in json_files:
-    has_close, has_socket = False, False
-    try:
-        with open(jf) as f:
-            for line in f:
-                if not line.strip(): continue
-                ev = json.loads(line)
-                if ev.get("type") == "socket": has_socket = True
-                if ev.get("type") in ("close", "close_range"): has_close = True
-        if has_socket and has_close: sockets_with_close += 1
-        elif has_socket: sockets_without += 1
-    except: corrupted += 1
-
-total = sockets_with_close + sockets_without
-coverage = round(sockets_with_close / total * 100, 1) if total > 0 else 0
-
-with open(csv_path, "a") as f:
-    f.write(f"{run},D,n_files,{len(json_files)},450,{'1' if len(json_files)>=450 else '0'}\n")
-    f.write(f"{run},D,close_coverage_pct,{coverage},95,{'1' if coverage>=95 else '0'}\n")
-    f.write(f"{run},D,corrupted_json,{corrupted},0,{'1' if corrupted==0 else '0'}\n")
-PYEOF
+    progress $i $RUNS_D "Run $i/$RUNS_D (Total)"
+    { sudo tcpsnitch -e -l 0 -u 500000 -d "$DIR_D/run_${i}" -- /tmp/stress_d 2>> "$LOG_D" || true; }
+    sleep 2 
 done
-echo -e "\n  ✅ Scénario D terminé\n"
+echo -e "\n  Scénario D terminé\n"

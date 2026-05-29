@@ -8,7 +8,7 @@ all:
 	@for dir in $(SUBDIRS); do \
 		echo ""; \
 		echo "============================================================"; \
-		echo "▶️  LANCEMENT : $$dir"; \
+		echo " LANCEMENT : $$dir"; \
 		echo "============================================================"; \
 		$(MAKE) -C $$dir all || exit 1; \
 	done
@@ -22,7 +22,6 @@ clean:
 		$(MAKE) -C $$dir clean || true; \
 	done
 
-# Permet de lancer juste la collecte ou juste l'analyse de partout
 run:
 	@for dir in $(SUBDIRS); do $(MAKE) -C $$dir run || exit 1; done
 

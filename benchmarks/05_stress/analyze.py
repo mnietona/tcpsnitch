@@ -1,6 +1,8 @@
 import csv
 import os
 import sys
+import glob
+import json
 import statistics
 from collections import defaultdict
 
@@ -12,17 +14,22 @@ try:
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
-    print("⚠️  matplotlib absent — graphique désactivé")
-
-# ── Chemins ───────────────────────────────────────────────────────────────────
+    print(" matplotlib absent — graphique désactivé")
 
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR  = os.path.join(SCRIPT_DIR, "output")
+
 RAW_CSV     = os.path.join(OUTPUT_DIR, "stress_raw.csv")
 RESULTS_CSV = os.path.join(OUTPUT_DIR, "stress_results.csv")
 GRAPH_PNG   = os.path.join(OUTPUT_DIR, "stress_graph.png")
 MEM_LOG     = os.path.join(OUTPUT_DIR, "scenario_C", "memory_log.csv")
 REPORT_TXT  = os.path.join(OUTPUT_DIR, "report.txt")
+
+SCENARIOS_DE = {
+    "E_Partiel": os.path.join(OUTPUT_DIR, "scenario_E_partiel"),
+    "D_Total":   os.path.join(OUTPUT_DIR, "scenario_D_total")
+}
+RESULTS_CSV_DE = os.path.join(OUTPUT_DIR, "stress_close_range_results.csv")
 
 SCENARIO_META = {
     "A": {"desc": "Intégrité JSON — 100 connexions simultanées"},
@@ -38,18 +45,10 @@ HYPOTHESES = {
     "rss_ratio":              ("H0-C", "Ratio RSS max/init",       2.0,   "<="),
 }
 
-COLORS = {"A": "#5DADE2", "B": "#48C9B0", "C": "#E67E22"}
-
-# ── Lecture Robuste ───────────────────────────────────────────────────────────
-
 def load_raw(filepath):
-    """Retourne un dict scenario → metric → liste de valeurs (Exclut le Scénario D)."""
     data = defaultdict(lambda: defaultdict(list))
-
     if not os.path.exists(filepath):
-        print(f"❌ Fichier non trouvé : {filepath}")
-        print("   Lance d'abord : bash run_benchmark.sh")
-        sys.exit(1)
+        return data
 
     with open(filepath, mode="r", encoding="utf-8-sig") as f:
         reader = csv.reader(f)
@@ -66,16 +65,15 @@ def load_raw(filepath):
             idx_metric = headers.index("metric")
             idx_value = headers.index("value")
             idx_h0_ok = headers.index("h0_ok")
-        except ValueError as e:
-            print(f"❌ Erreur d'en-tête dans le CSV : {e}")
-            sys.exit(1)
+        except ValueError:
+            return data
 
         for row in reader:
             if not row or len(row) <= max(idx_run, idx_scenario, idx_metric, idx_value, idx_h0_ok):
                 continue
             
             s = row[idx_scenario].strip().upper()
-            if s == "D" or not s:
+            if s in ["D", "E"] or not s:
                 continue
                 
             try:
@@ -95,7 +93,6 @@ def load_raw(filepath):
     return data
 
 def load_memory_log(filepath):
-    """Charge le log mémoire pour le graphique RSS."""
     timestamps = []
     rss_values = []
     if not os.path.exists(filepath):
@@ -106,16 +103,13 @@ def load_memory_log(filepath):
         for row in reader:
             try:
                 timestamps.append(int(row["timestamp_s"]))
-                # Conversion KB en MB
                 rss_values.append(int(row["rss_kb"]) / 1024.0)
             except (ValueError, KeyError):
                 pass
     return timestamps, rss_values
 
-# ── Statistiques ──────────────────────────────────────────────────────────────
 
 def compute_stats(data):
-    """Retourne stats par scénario/métrique."""
     stats = {}
     for s, metrics in data.items():
         stats[s] = {}
@@ -134,8 +128,6 @@ def compute_stats(data):
                 "values":  values,
             }
     return stats
-
-# ── Export CSV ────────────────────────────────────────────────────────────────
 
 def export_results_csv(stats, filepath):
     fields = [
@@ -159,18 +151,107 @@ def export_results_csv(stats, filepath):
                     "h0_ok":    "✅" if st["h0_ok"] else "⚠️",
                 })
 
-# ── Graphiques ─────────────────────────────────────────────────────────────────
+
+def analyze_scenarios_d_e():
+    """Analyse les dossiers D et E, génère leur CSV et retourne un texte de bilan."""
+    all_results = []
+    lines = []
+    
+    for scenario_name, base_dir in SCENARIOS_DE.items():
+        run_dirs = glob.glob(os.path.join(base_dir, "run_*"))
+        if not run_dirs:
+            continue
+
+        total_global_files = 0
+        total_global_empty = 0
+        total_global_sockets = 0
+        total_global_closes = 0
+
+        sorted_runs = sorted(run_dirs, key=lambda x: int(os.path.basename(x).split('_')[1]) if '_' in os.path.basename(x) else 0)
+
+        for run_dir in sorted_runs:
+            run_name = os.path.basename(run_dir)
+            json_files = glob.glob(os.path.join(run_dir, "**", "[0-9]*.json"), recursive=True)
+            
+            total_files = len(json_files)
+            empty_files = 0
+            valid_sockets = 0
+            valid_closes = 0
+
+            for jf in json_files:
+                if os.path.getsize(jf) == 0:
+                    empty_files += 1
+                    continue
+
+                has_socket = False
+                has_close = False
+                is_empty_content = True
+
+                try:
+                    with open(jf, 'r', encoding='utf-8') as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line: continue
+                            is_empty_content = False
+                            try:
+                                ev = json.loads(line)
+                                ev_type = ev.get("type")
+                                if ev_type == "socket": has_socket = True
+                                elif ev_type in ("close", "close_range"): has_close = True
+                            except json.JSONDecodeError:
+                                pass
+                except Exception:
+                    pass
+
+                if is_empty_content:
+                    empty_files += 1
+                else:
+                    if has_socket: valid_sockets += 1
+                    if has_close: valid_closes += 1
+
+            corruption_rate = round((empty_files / total_files * 100), 2) if total_files > 0 else 0
+
+            all_results.append({
+                "scenario": scenario_name,
+                "run_id": run_name,
+                "total_fichiers": total_files,
+                "fichiers_vides_corrompus": empty_files,
+                "traces_socket_valides": valid_sockets,
+                "traces_close_valides": valid_closes,
+                "taux_corruption_pct": corruption_rate
+            })
+            
+            total_global_files += total_files
+            total_global_empty += empty_files
+            total_global_sockets += valid_sockets
+            total_global_closes += valid_closes
+
+        global_rate = round((total_global_empty / total_global_files * 100), 2) if total_global_files > 0 else 0
+        
+        lines.append(f"  Scénario {scenario_name} (sur {len(sorted_runs)} itérations)")
+        lines.append("  " + "─" * 50)
+        lines.append(f"    - Fichiers générés au total     : {total_global_files}")
+        lines.append(f"    - Fichiers victimes (0 octet)   : {total_global_empty} ({global_rate} % de corruption)")
+        lines.append(f"    - Fichiers survivants (Socket)  : {total_global_sockets}")
+        lines.append(f"    - Événements CLOSE capturés     : {total_global_closes}")
+        lines.append("")
+
+    if all_results:
+        with open(RESULTS_CSV_DE, mode='w', newline='', encoding='utf-8') as csvfile:
+            fieldnames = ["scenario", "run_id", "total_fichiers", "fichiers_vides_corrompus", "traces_socket_valides", "traces_close_valides", "taux_corruption_pct"]
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in all_results:
+                writer.writerow(row)
+                
+    return "\n".join(lines) if lines else "  (Données des scénarios D/E introuvables)\n"
 
 def generate_main_graph(stats, filepath):
     if not HAS_MATPLOTLIB:
         return
 
     import matplotlib.gridspec as gridspec
-
-    # Création de la figure avec une taille adaptée pour une page A4
     fig = plt.figure(figsize=(12, 9))
-    
-    # Définition de la grille : 2 lignes, 2 colonnes
     gs = gridspec.GridSpec(2, 2, height_ratios=[1, 1.2], hspace=0.35, wspace=0.2)
 
     fig.suptitle(
@@ -179,7 +260,6 @@ def generate_main_graph(stats, filepath):
         fontsize=15, fontweight="bold", y=0.98
     )
 
-    # ── Panneau A : Validité JSON par run (Ligne 0, Colonne 0) ───────────────
     ax1 = fig.add_subplot(gs[0, 0])
     if "A" in stats and "json_validity_pct" in stats["A"]:
         st  = stats["A"]["json_validity_pct"]
@@ -192,7 +272,6 @@ def generate_main_graph(stats, filepath):
         ax1.set_ylim([90, 101])
         ax1.legend(loc="lower right")
 
-    # ── Panneau B : Ratio socket/fichier (Ligne 0, Colonne 1) ────────────────
     ax2 = fig.add_subplot(gs[0, 1])
     if "B" in stats and "socket_file_ratio" in stats["B"]:
         st   = stats["B"]["socket_file_ratio"]
@@ -206,10 +285,7 @@ def generate_main_graph(stats, filepath):
         ax2.set_ylim([0.9, 1.05])
         ax2.legend(loc="lower right", fontsize=9)
 
-    # ── Panneau C : Courbe RSS mémoire (Ligne 1, Colonnes 0 ET 1) ────────────
     ax3 = fig.add_subplot(gs[1, :])
-    
-    # CORRECTION : On charge les vraies données du fichier memory_log.csv
     timestamps, rss_mb = load_memory_log(MEM_LOG) 
     
     if timestamps and rss_mb:
@@ -231,21 +307,19 @@ def generate_main_graph(stats, filepath):
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.savefig(filepath, dpi=250, bbox_inches="tight")
     plt.close()
-    print(f"✅ Graphique principal généré dans {filepath}")
-    
-# ── Rapport texte ─────────────────────────────────────────────────────────────
 
-def generate_report(stats, filepath):
+
+def generate_report(stats, de_text, filepath):
     sep = "=" * 65
     lines = [
         sep,
-        "  BENCHMARK 5 — ROBUSTESSE SOUS CHARGE (A, B, C)",
+        "  BENCHMARK 5 — ROBUSTESSE SOUS CHARGE ET FAILLES",
         sep,
         "",
         "CONTEXTE",
         "  Validation de la stabilité de tcpsnitch sous des conditions",
-        "  extrêmes : connexions massives simultanées et transferts",
-        "  continus de longue durée.",
+        "  extrêmes et analyse du comportement face aux tirs de barrage",
+        "  de type close_range (suicide applicatif).",
         "",
         "RÉSULTATS PAR SCÉNARIO",
         "-" * 65,
@@ -300,10 +374,12 @@ def generate_report(stats, filepath):
                     lines.append(f"  {verdict} Échantillons valides : {st['mean']:.0f} relevés")
     lines.append("")
 
+    # Scénarios D & E
+    lines.append("  Scénarios D & E — Tirs de barrage (close_range)")
+    lines.append(de_text)
+
     # Conclusion Globale
     lines += ["CONCLUSION GLOBALE", "-" * 65]
-    all_ok = all(h0_global.values()) if h0_global else False
-
     for h0_name in ["H0-A", "H0-B", "H0-C"]:
         ok = h0_global.get(h0_name, None)
         if ok is None:
@@ -313,31 +389,16 @@ def generate_report(stats, filepath):
         else:
             lines.append(f"  ⚠️  {h0_name} : non vérifiée")
 
-    lines.append("")
-    if all_ok:
-        lines += [
-            "  tcpsnitch est robuste sous charge. L'intégrité des données",
-            "  est maintenue, le ratio 1:1 est respecté, et la consommation",
-            "  mémoire reste stable sur de longs transferts."
-        ]
-    else:
-        lines += [
-            "  Certaines hypothèses ne sont pas vérifiées.",
-            "  Voir le détail par scénario ci-dessus."
-        ]
-
     lines += ["", sep]
     report = "\n".join(lines)
     with open(filepath, "w") as f:
         f.write(report)
     return report
 
-# ── Main ──────────────────────────────────────────────────────────────────────
-
 def main():
-    print("=" * 55)
-    print(" Analyse Benchmark 5 — Robustesse sous charge")
-    print("=" * 55)
+    print("=" * 65)
+    print(" Analyse Benchmark 5 — Robustesse sous charge & close_range")
+    print("=" * 65)
     print()
 
     data  = load_raw(RAW_CSV)
@@ -347,21 +408,22 @@ def main():
         print(f"  Scénario {s} — {SCENARIO_META.get(s, {}).get('desc', '')}")
         for metric, st in stats[s].items():
             verdict = "✅" if st["h0_ok"] else "⚠️ "
-            
-            if metric in HYPOTHESES:
-                name = HYPOTHESES[metric][1]
-            else:
-                name = metric
-
+            name = HYPOTHESES[metric][1] if metric in HYPOTHESES else metric
             print(f"    {verdict} {name}: {st['mean']:.1f} (n={st['n']})")
         print()
+
+    print("  Analyse croisée des Scénarios D et E (close_range)...")
+    de_text = analyze_scenarios_d_e()
+    print(de_text)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     export_results_csv(stats, RESULTS_CSV)
     generate_main_graph(stats, GRAPH_PNG)
-    generate_report(stats, REPORT_TXT)
-    print(f"✅ Rapport généré dans {REPORT_TXT}")
-
+    generate_report(stats, de_text, REPORT_TXT)
+    
+    print(f"✅ Graphique généré dans {GRAPH_PNG}")
+    print(f"✅ Rapport texte généré dans {REPORT_TXT}")
+    print(f"✅ CSV globaux générés dans le dossier output/")
 
 if __name__ == "__main__":
     main()

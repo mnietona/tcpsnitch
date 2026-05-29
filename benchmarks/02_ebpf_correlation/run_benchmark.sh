@@ -13,7 +13,7 @@ rm -rf "$OUTPUT_BASE"
 mkdir -p "$OUTPUT_BASE"
 echo "run,scenario,loss_pct,total_retrans,correlated,noise,correlation_rate" > "$RAW_CSV"
 
-# --- LE SCRIPT PYTHON DE TEST MULTITHREAD ---
+# MULTITHREAD
 cat << 'EOF' > $PYTHON_TEST
 import threading
 import urllib.request
@@ -106,7 +106,7 @@ run_scenario() {
     local loss=$3
     local num_threads=$4
     
-    echo "── Scénario $scen_id : $label (Perte=$loss%) ────────────────"
+    echo "Scénario $scen_id : $label (Perte=$loss%)"
     mkdir -p "$OUTPUT_BASE/scenario_$scen_id"
 
     for i in $(seq 1 $RUNS); do
@@ -118,7 +118,7 @@ run_scenario() {
         remove_netem
         analyze_session "$OUTPUT_BASE/scenario_$scen_id/run_${i}" "$scen_id" "$i" "$loss"
     done
-    echo -e "\n  ✅ Scénario $scen_id terminé\n"
+    echo -e "\n Scénario $scen_id terminé\n"
 }
 
 run_scenario "Upload nominal (1 socket)" "A" "5" "1"

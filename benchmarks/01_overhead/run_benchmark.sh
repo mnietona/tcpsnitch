@@ -1,12 +1,11 @@
 #!/bin/bash
-# run_benchmark.sh
 
 set -euo pipefail
 
-# --- CONFIGURATION ---
+# CONFIGURATION
 RUNS=30 
 URL="http://127.0.0.1:8080/100MB.bin"
-INTERFACE="lo" # On utilise la boucle locale (localhost)
+INTERFACE="lo" # localhost
 
 OUTPUT_BASE="output"
 TIMINGS_CSV="$OUTPUT_BASE/timings.csv"
@@ -23,17 +22,17 @@ echo "run,condition,elapsed_ms,cpu_pct,mem_kb,exit_code" > "$TIMINGS_CSV"
 echo "── Préparation du serveur local ──"
 # 1. Création d'un fichier de 100Mo avec des données aléatoires
 if [ ! -f 100MB.bin ]; then
-    echo "Génération de 100MB.bin (cela prend quelques secondes)..."
+    echo "Génération de 100MB.bin"
     dd if=/dev/urandom of=100MB.bin bs=1M count=100 2>/dev/null
 fi
 
 # 2. Lancement du serveur Python en arrière-plan
 python3 -m http.server 8080 >/dev/null 2>&1 &
 SERVER_PID=$!
-echo "🌐 Serveur local démarré sur http://127.0.0.1:8080 (PID: $SERVER_PID)"
+echo "Serveur local démarré sur http://127.0.0.1:8080 (PID: $SERVER_PID)"
 sleep 2
 
-# 3. Fonction de nettoyage robuste
+# 3.Nettoyage
 cleanup() {
     echo -e "\n[!] Nettoyage..."
     kill $SERVER_PID 2>/dev/null || true
@@ -51,7 +50,7 @@ measure() {
     local cmd=$3
     
     local log_file=$(mktemp)
-    sudo rm -f "$DL_FILE" # Sudo car si tcpsnitch tourne en root, le fichier appartient à root
+    sudo rm -f "$DL_FILE"
     
     # Exécution silencieuse
     /usr/bin/time -f "%e %P %M" -o "$log_file" bash -c "$cmd" >/dev/null 2>&1 || true
@@ -64,7 +63,7 @@ measure() {
     fi
     
     if [ "$dl_size" -lt 100000000 ]; then
-        echo -e "\n⚠️  Avertissement: Taille incorrecte ($dl_size octets). tcpsnitch a bloqué la connexion."
+        echo -e "\n Avertissement: Taille incorrecte ($dl_size octets). tcpsnitch a bloqué la connexion."
         exit_code=99
     fi
     
@@ -126,4 +125,4 @@ for i in $(seq 1 $RUNS); do
 done
 # Le trap s'occupe de retirer la règle tc
 
-echo -e "\n\n✅ Benchmark terminé. Lancer 'python3 analyze.py' pour générer le rapport."
+echo -e "\n\n Benchmark terminé"
