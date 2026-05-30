@@ -50,10 +50,10 @@ Inside this directory, you will find:
 - **meta/**: Execution metadata (kernel version, command-line arguments, environment details, etc.).
 - **netlink_events.jsonl**: Records of IP/Route changes monitored during the execution.
 
-### 🔬 eBPF Mode (Linux x86-64 Only)
+### eBPF Mode
 If you run the tool with the **`-e`** flag (requires root/sudo), `tcpsnitch` will load an eBPF program into the kernel to track low-level TCP events (retransmissions, drops, state changes) that are invisible from userspace.
 
-> **Note on Android eBPF:** While an `android-ebpf` target exists, its functionality is currently limited by SELinux policies on **Kernel 4.19**. The tool will automatically fallback to standard `LD_PRELOAD` tracing on these devices. However, newer Android devices running **Kernel 5.10+ (GKI - Generic Kernel Image)** should support these tracepoints.
+> **Note on Android eBPF:** On older mobile devices (kernels prior to 5.10), advanced eBPF features are not fully available. The tool automatically detects this and falls back to standard `LD_PRELOAD` tracing to ensure stability. While the full eBPF version is activated on newer devices (Kernel 5.10+), please note that modern Android security policies (such as `sandboxing` and `SELinux`) increasingly restrict eBPF execution, which may still hinder deployment depending on your device's specific security context.
 
 ```bash
 $ sudo tcpsnitch -e curl google.com
@@ -138,7 +138,7 @@ tcpsnitch curl google.com
 - **`-b <bytes>`** : Extract `TCP_INFO` every `<bytes>` sent/received (default: **4096**).
 - **`-c`** : Capture a **.pcap** trace for each socket (Linux only, requires **sudo**).
 - **`-d <dir>`** : Base directory for traces (defaults to `/tmp/tcpsnitch_output`).
-- **`-e`** : Activate **eBPF** capture for low-level kernel events (Linux only, requires **sudo**).
+- **`-e`** : Activate **eBPF** capture for low-level kernel events (requires **sudo**).
 - **`-f <lvl>`** : Verbosity level of logs saved to `logs.txt` (0 to 5, default: **2**).
 - **`-k <pkg>`** : Kill instrumented Android package and pull traces to the host.
 - **`-l <lvl>`** : Verbosity of internal errors sent to `stderr` (0 to 5, default: **2**).
@@ -178,6 +178,47 @@ sudo tcpsnitch -c curl google.com
 - **Permissions**: If run without `sudo`, the tool will skip packet capture (check `logs.txt` for `pcap_open_live` errors).
 - **Android**: This feature is currently **not available** for Android targets.
 
+---
+
+## Compilation for Android
+
+To trace modern Android apps (ARM64), `tcpsnitch` must be cross-compiled using the **Android Native Development Kit (NDK) r26+**.
+
+### 1. Environment Setup
+You don't need to generate a standalone toolchain anymore. Modern NDKs provide a direct LLVM/Clang compiler.
+
+**Assumptions (based on 2026 test environment):**
+- **Host:** Ubuntu 24.04 LTS
+- **NDK Path:** `~/Android/Sdk/ndk/android-ndk-r26d`
+- **Target:** Pixel 4a (5G), Android 14 (API 34)
+
+Export the following variables in your terminal:
+```bash
+export NDK_ROOT=$HOME/Android/Sdk/ndk/android-ndk-r26d
+export NDK_TC=$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64
+export CC_ANDROID=$NDK_TC/bin/aarch64-linux-android34-clang
+```
+
+### 2. Build & Auto-Dependencies
+The build system is designed to be **Zero Friction**. You don't need to manually prepare third-party libraries. You can choose between the standard version and the eBPF version.
+
+**Standard Version:**
+```bash
+make android
+sudo make install
+```
+
+**eBPF Version:**
+```bash
+make android-ebpf
+sudo make install
+```
+
+**What happens under the hood?** The `Makefile` automatically detects if the Android dependencies (`libjansson`) are missing. If so, it will clone, cross-compile, and install them into `android_deps/` before building the `tcpsnitch` library.
+
+**⚠️ Critical Note:** Every time you run a `make android` command, you **must** run `sudo make install` immediately after. The `tcpsnitch` host script looks for the Android library in `/usr/local/bin/tcpsnitch_deps/`. If you don't install it, the script will push an old version to the device or fail.
+
+---
 
 ## Android Usage
 
@@ -210,51 +251,7 @@ The usage on Android is a two-step process: launching the instrumentation and pu
 
 ---
 
-## Compilation for Android
-
-To trace modern Android apps (ARM64), `tcpsnitch` must be cross-compiled using the **Android Native Development Kit (NDK) r26+**.
-
-### 1. Environment Setup
-You don't need to generate a standalone toolchain anymore. Modern NDKs provide a direct LLVM/Clang compiler.
-
-**Assumptions (based on 2026 test environment):**
-- **Host:** Ubuntu 24.04 LTS
-- **NDK Path:** `~/Android/Sdk/ndk/android-ndk-r26d`
-- **Target:** Pixel 4a (5G), Android 14 (API 34)
-
-Export the following variables in your terminal:
-```bash
-export NDK_ROOT=$HOME/Android/Sdk/ndk/android-ndk-r26d
-export NDK_TC=$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64
-export CC_ANDROID=$NDK_TC/bin/aarch64-linux-android34-clang
-```
-
-### 2. Build & Auto-Dependencies
-The build system is designed to be **Zero Friction**. You don't need to manually prepare third-party libraries. You can choose between the standard version and the experimental eBPF version.
-
-**Standard Version:**
-```bash
-make android
-sudo make install
-```
-
-**Experimental eBPF Version:**
-```bash
-make android-ebpf
-sudo make install
-```
-
-**What happens under the hood?** The `Makefile` automatically detects if the Android dependencies (`libjansson`) are missing. If so, it will clone, cross-compile, and install them into `android_deps/` before building the `tcpsnitch` library.
-
-**⚠️ Critical Note:** Every time you run a `make android` command, you **must** run `sudo make install` immediately after. The `tcpsnitch` host script looks for the Android library in `/usr/local/bin/tcpsnitch_deps/`. If you don't install it, the script will push an old version to the device or fail.
-
-### 🔬 Technical Note on Android eBPF
-The `android-ebpf` target compiles the eBPF loader and the kernel object (`tcpsnitch_android.bpf.o`). 
-On **Android 14 (Kernel 4.19)**, while the library successfully creates BPF Maps, the final attachment (`BPF_PROG_LOAD`) will fail with `EPERM` due to SELinux restrictions on the `untrusted_app` context. The tool will automatically fallback to standard `LD_PRELOAD` tracing.
-
----
-
-## 🔬 Test Environment (Reference)
+## Test Environment (Reference)
 
 - **Host Machine:** Ubuntu 24.04.4 LTS (Kernel 6.17.0, x86_64)
 - **Target Device:** Google Pixel 4a (5G)
@@ -270,6 +267,7 @@ On **Android 14 (Kernel 4.19)**, while the library successfully creates BPF Maps
 
 1.  **Userspace Interception (`LD_PRELOAD`)**: It leverages a feature of the Linux dynamic linker (`ld.so`) that allows loading custom shared libraries before the standard `libc`. By redefining functions like `connect()`, `send()`, or `recv()`, `tcpsnitch` acts as a "shim" (or proxy). It intercepts the application's request, records the arguments and timestamps in JSON, and then transparently forwards the call to the real `libc`.
 2.  **Kernel Tracing (eBPF)**: When the `-e` flag is used, `tcpsnitch` loads a small program directly into the Linux kernel. This program attaches to **Tracepoints** (specific hooks in the TCP/IP stack). This allows the tool to catch events that happen deep inside the OS—such as TCP retransmissions or packet drops—which are completely invisible to the `libc` layer.
+3. **Topology Monitoring (Netlink)**: To understand the physical network environment, `tcpsnitch` listens to Linux Netlink sockets. This allows the tool to asynchronously capture hardware-level and routing events—such as interface state changes (e.g., Wi-Fi to LTE handovers), IP address reassignments, and routing table updates. This provides crucial context to explain network interruptions that cannot be deduced from the socket API alone.
 
 ### Why do I need `sudo` / Root access?
 
@@ -278,7 +276,3 @@ Root privileges are required for two specific features:
 - **Packet Capture (`-c`)**: Opening "Raw Sockets" to capture actual network packets via `libpcap` requires `CAP_NET_RAW`.
 
 On **Android**, root is mandatory because modern versions of the OS strictly forbid third-party apps from setting global system properties (like `wrap.com.pkg.name`) or accessing the `/data/` partition where the library is stored.
-
-### What are these `wrong ELF class` errors?
-
-These are harmless and can be ignored. To ensure compatibility, `tcpsnitch` may load both 32-bit and 64-bit versions of its library into the `LD_PRELOAD` environment variable. When you run a command, the dynamic linker attempts to load both; it successfully links the one matching the application's architecture and throws a "wrong ELF class" warning for the other. This does not affect the tracing process.
