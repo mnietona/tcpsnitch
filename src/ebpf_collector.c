@@ -17,8 +17,6 @@
 #include <time.h>
 #include <unistd.h>
 
-/* ── Internal State ──────────────────────────────────────────────────────── */
-
 static struct {
     struct tcpsnitch_bpf *skel;
     struct ring_buffer *rb;
@@ -39,8 +37,6 @@ static struct {
     .stop_flag = false,
     .file_mutex = PTHREAD_MUTEX_INITIALIZER,
 };
-
-/* ── JSONL Serialization ─────────────────────────────────────────────────── */
 
 static void write_event_jsonl(const struct ebpf_event *ev) {
     if (!g_collector.jsonl_fp)
@@ -94,15 +90,13 @@ static void write_event_jsonl(const struct ebpf_event *ev) {
     pthread_mutex_unlock(&g_collector.file_mutex);
 }
 
-/* ── Callbacks & Polling ─────────────────────────────────────────────────── */
 
 static int handle_event(void *ctx, void *data, size_t data_sz) {
     (void)ctx;
     (void)data_sz;
     const struct ebpf_event *ev = (const struct ebpf_event *)data;
 
-    // Skip untracked events (session_id 9999 is a special value for untracked
-    // events)
+    // Filtrage de sécurité : ne pas logguer les événements de la session 9999 (ex: session de test)
     if (ev->session_id == 9999)
         return 0;
 
@@ -130,8 +124,6 @@ static void *polling_thread(void *arg) {
     LOG(INFO, "eBPF collector polling thread stopped.");
     return NULL;
 }
-
-/* ── Public API ──────────────────────────────────────────────────────────── */
 
 int ebpf_collector_init(const char *output_dir) {
     int ret = 0;
@@ -279,8 +271,6 @@ void ebpf_collector_stop(void) {
 bool ebpf_collector_is_active(void) {
     return g_collector.active;
 }
-
-/* ── FD Lifecycle Management ─────────────────────────────────────────────── */
 
 void ebpf_collector_register_fd(int fd, uint64_t session_id) {
     if (g_collector.map_fd < 0)

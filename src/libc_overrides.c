@@ -1,9 +1,3 @@
-/**
- * @file libc_overrides.c
- * @brief LD_PRELOAD overrides for tracking socket lifecycle and establishing
- * eBPF correlation.
- */
-
 #include "ebpf_collector.h"
 #include "init.h"
 #include "lib.h"
@@ -70,13 +64,7 @@
         return ret;                                                            \
     }
 
-/**
- * @brief Intercepts socket() creation.
- * * eBPF Injection Point #1: After a successful socket() call, we register the
- * FD in the BPF map: {pid, fd} -> session_id. The session_id is tcpsnitch's
- * internal socket identifier (sock->id). We use the FD as a provisional
- * correlation ID until merge_sessions.py resolves it.
- */
+
 typedef int (*socket_type)(int domain, int type, int protocol);
 socket_type orig_socket;
 
@@ -97,17 +85,10 @@ EXPORT int socket(int domain, int type, int protocol) {
     return fd;
 }
 
-/* Pre-declarations for getsockname used in eBPF correlation */
 typedef int (*getsockname_type)(int fd, struct sockaddr *addr, socklen_t *len);
 extern getsockname_type orig_getsockname;
 
-/**
- * @brief Intercepts connect() to handle Double Endianness for eBPF correlation.
- * * Registers the source port in the eBPF map. To ensure the kernel tracepoint
- * (tcp_retransmit_skb) matches the port regardless of how the kernel structures
- * were compiled, we employ a "Double Endianness" strategy: we register both
- * the Network Byte Order and Host Byte Order versions of the port.
- */
+
 typedef int (*connect_type)(int fd, const struct sockaddr *addr, socklen_t len);
 connect_type orig_connect;
 
@@ -223,13 +204,7 @@ override(isfdtype, int, 2, int a);
 override(write, ssize_t, 3, const void *a, size_t b);
 override(read, ssize_t, 3, void *a, size_t b);
 
-/**
- * @brief Intercepts close() to maintain eBPF mapping consistency.
- * * eBPF Injection Point #2: Unregisters {pid, fd} from the BPF map BEFORE
- * calling orig_close(). Ordering is crucial here: if we unregistered after
- * orig_close(), the OS could recycle the FD in a different thread, opening a
- * race condition window leading to map corruption.
- */
+
 typedef int (*close_type)(int fd);
 close_type orig_close;
 
@@ -277,10 +252,7 @@ EXPORT int close(int fd) {
 }
 
 /**
- * @brief Intercepts close_range() to prevent undetected FD leaks.
- * * Iterates through the given range to proactively clean up eBPF map entries
- * before the kernel performs a mass closure. Caps iteration at 4096 to prevent
- * performance stalls if UINT_MAX is passed.
+  * @brief Intercepts close_range()
  */
 typedef int (*close_range_type)(unsigned int fd, unsigned int max_fd,
                                 int flags);
@@ -290,7 +262,7 @@ EXPORT int close_range(unsigned int fd, unsigned int max_fd, int flags) {
     if (!orig_close_range)
         orig_close_range = (close_range_type)dlsym(RTLD_NEXT, "close_range");
 
-    // FIX: close_range peut ne pas exister sur kernel < 5.9
+    // close_range peut ne pas exister sur kernel < 5.9
     if (!orig_close_range)
         return 0;
 
@@ -301,11 +273,11 @@ EXPORT int close_range(unsigned int fd, unsigned int max_fd, int flags) {
 
     unsigned int cap = (max_fd > 4096) ? 4096 : max_fd;
 
-    // FIX: si fd > cap, aucun FD à traiter dans la plage
+    // Fsi fd > cap, aucun FD à traiter dans la plage
     if (fd > cap)
         return orig_close_range(fd, max_fd, flags);
 
-    unsigned int count = cap - fd + 1;  // FIX: calcul séparé, pas d'underflow
+    unsigned int count = cap - fd + 1;  // calcul séparé, pas d'underflow
 
     if (ebpf_collector_is_active()) {
         for (unsigned int i = fd; i <= cap; i++) {
@@ -314,7 +286,7 @@ EXPORT int close_range(unsigned int fd, unsigned int max_fd, int flags) {
         }
     }
 
-    // FIX: vérifier que calloc réussit
+    // vérifier que calloc réussit
     bool *is_inet = calloc(count, sizeof(bool));
     if (!is_inet)
         return orig_close_range(fd, max_fd, flags);
@@ -360,8 +332,6 @@ EXPORT int dup(int fd) {
 
 /**
  * @brief Intercepts dup2() / dup3().
- * * Safely unregisters 'newfd' if it already exists, as dup2/dup3 will
- * implicitly close it.
  */
 typedef int (*dup2_type)(int fd, int newfd);
 dup2_type orig_dup2;

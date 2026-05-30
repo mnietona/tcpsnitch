@@ -70,7 +70,7 @@ static void tcpsnitch_free(void) {
         fclose(_stderr);
 #endif
     pthread_mutex_destroy(&init_mutex);
-    ra_free();  // FIX: libérer le tableau des sockets
+    ra_free(); // libération de la resizable array globale
 }
 
 #ifndef __ANDROID__
@@ -218,7 +218,7 @@ void init_tcpsnitch(void) {
             LOG(ERROR, "conf_opt_d is NULL on Android, aborting.");
             goto exit_fail;
         }
-        /* Créer le dossier s'il n'existe pas */
+        // Créer le dossier s'il n'existe pas
         mkdir(conf_opt_d, 0777);
 #else
         conf_opt_d = strdup(".");
@@ -241,7 +241,6 @@ void init_tcpsnitch(void) {
     if (conf_opt_t)
         start_json_dumper_thread();
 
-    // FIX: installer les handlers de signaux
     signal(SIGTERM, signal_handler);
     signal(SIGINT,  signal_handler);
 

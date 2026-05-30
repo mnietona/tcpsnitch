@@ -1,17 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0
-/**
- * @file tcpsnitch.bpf.c
- * @brief Kernel-side eBPF programs for TCP retransmission and socket lifecycle tracing.
- * * Compiles into CO-RE (Compile Once - Run Everywhere) BPF bytecode.
- */
-
 #include <vmlinux.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
 #include "bpf_shared_maps.h"
-
-/* ── Maps Definitions ────────────────────────────────────────────────────── */
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
@@ -33,7 +24,6 @@ struct {
     __uint(max_entries, BPF_RINGBUF_SIZE);
 } events SEC(".maps");
 
-/* ── Internal Helpers ────────────────────────────────────────────────────── */
 
 static __always_inline __u64 lookup_session(__u32 pid, __s32 fd)
 {
@@ -56,8 +46,6 @@ emit_event(__u64 session_id, EbpfEventType type, __u32 pid)
     ev->pid          = pid;
     return ev;
 }
-
-/* ── Program 1: TCP Retransmissions ───────────────────────────────────── */
 
 #ifndef __ANDROID__
 struct trace_event_raw_tcp_event_sk_skb {
@@ -84,11 +72,11 @@ int trace_tcp_retransmit(struct trace_event_raw_tcp_event_sk_skb *ctx)
 {
     __u32 pid = bpf_get_current_pid_tgid() >> 32;
 
-    // Lookup session via source port (sport) 
+    // cherche le session_id associé au port source
     __u16 sport      = ctx->sport;
     __u64 *sk_val    = bpf_map_lookup_elem(&sport_to_session, &sport);
     
-    // Fallback to 9999 if not found (untracked socket) 
+    // On ignore 
     __u64 session_id = sk_val ? *sk_val : 9999;
 
     struct ebpf_event *ev = emit_event(session_id, EBPF_EV_TCP_RETRANSMIT, pid);
@@ -97,7 +85,7 @@ int trace_tcp_retransmit(struct trace_event_raw_tcp_event_sk_skb *ctx)
     const struct sock *sk = (const struct sock *)ctx->skaddr;
     const struct tcp_sock *tp = (const struct tcp_sock *)sk;
 
-    // Capture TCP Congestion metrics using CO-RE
+    // On lit les champs nécessaires du tcp_sock
     ev->tcp_retransmit.snd_cwnd = BPF_CORE_READ(tp, snd_cwnd);
     ev->tcp_retransmit.srtt_us  = BPF_CORE_READ(tp, srtt_us) >> 3;
     ev->tcp_retransmit.seq      = BPF_CORE_READ(tp, snd_una);  
@@ -105,8 +93,6 @@ int trace_tcp_retransmit(struct trace_event_raw_tcp_event_sk_skb *ctx)
     bpf_ringbuf_submit(ev, 0);
     return 0;
 }
-
-/* ── Program 2: io_uring Completions ──────────────────────────────────── */
 
 SEC("tracepoint/io_uring/io_uring_complete")
 int trace_iouring_complete(struct trace_event_raw_io_uring_complete *ctx)
@@ -116,6 +102,7 @@ int trace_iouring_complete(struct trace_event_raw_io_uring_complete *ctx)
 
     bpf_probe_read_kernel(&user_data, sizeof(user_data), &ctx->user_data);
 
+    // cherche le session_id associé au fd
     __s32 fd = (__s32)user_data;
     __u64 session_id = lookup_session(pid, fd);
 
@@ -128,10 +115,6 @@ int trace_iouring_complete(struct trace_event_raw_io_uring_complete *ctx)
     bpf_ringbuf_submit(ev, 0);
     return 0;
 }
-
-
-/* ── Lifecycle Management ────────────────────────────────────────────────── */
-
 
 SEC("tp/tcp/inet_sock_set_state")
 int trace_inet_sock_set_state(struct trace_event_raw_inet_sock_set_state *ctx) 

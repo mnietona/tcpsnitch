@@ -1,14 +1,13 @@
+// Code ebpf pour smartphone non supporté, implémentation de stub pour éviter les erreurs de compilation
 #ifdef __ANDROID__
 
 #include "ebpf_collector.h"
 #include <stdbool.h>
 #include <stdint.h>
 
-/* ── Lifecycle ───────────────────────────────────────────────────────────── */
 
 int ebpf_collector_init(const char *output_dir) {
     (void)output_dir;
-    /* eBPF not supported on Android (kernel 4.19, no libbpf CO-RE). */
     return 0;
 }
 
@@ -20,13 +19,11 @@ void ebpf_collector_stop(void) {
     /* no-op */
 }
 
-/* ── State ───────────────────────────────────────────────────────────────── */
 
 bool ebpf_collector_is_active(void) {
     return false;
 }
 
-/* ── FD / sport lifecycle (called from libc_overrides.c) ────────────────── */
 
 void ebpf_collector_register_fd(int fd, uint64_t session_id) {
     (void)fd;

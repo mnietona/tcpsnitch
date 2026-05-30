@@ -1,7 +1,6 @@
-/* src/ebpf_collector_android_bpf.c
- * Android eBPF collector — loads the BPF object from disk at runtime.
- * Same public API as ebpf_collector.c; no skeleton needed.
- */
+// Code ebpf pour android 
+// meme logique que ebpf_collector.c mais avec des adaptations pour android
+
 #ifdef TCPSNITCH_EBPF_ANDROID
 
 #include "ebpf_collector.h"
@@ -21,10 +20,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-/* Path where the BPF object is pushed on the device */
+// Chemin de l'objet BPF pré-compilé
 #define BPF_OBJ_PATH "/data/tcpsnitch_android.bpf.o"
 
-/* ── Internal State ──────────────────────────────────────────────────────── */
 
 static struct {
     struct bpf_object   *obj;
@@ -36,7 +34,6 @@ static struct {
     bool                 active;
     bool                 stop_flag;
     pthread_mutex_t      file_mutex;
-    /* attached links — kept to auto-detach on destroy */
     struct bpf_link     *link_retransmit;
     struct bpf_link     *link_iouring;
     struct bpf_link     *link_inet_state;
@@ -53,8 +50,6 @@ static struct {
     .link_iouring    = NULL,
     .link_inet_state = NULL,
 };
-
-/* ── JSONL Serialization (identical to ebpf_collector.c) ─────────────────── */
 
 static void write_event_jsonl(const struct ebpf_event *ev)
 {
@@ -104,7 +99,6 @@ static void write_event_jsonl(const struct ebpf_event *ev)
     pthread_mutex_unlock(&g_col.file_mutex);
 }
 
-/* ── Ring-buffer callback & polling thread ───────────────────────────────── */
         break;
     }
 
@@ -112,7 +106,6 @@ static void write_event_jsonl(const struct ebpf_event *ev)
     pthread_mutex_unlock(&g_col.file_mutex);
 }
 
-/* ── Ring-buffer callback & polling thread ───────────────────────────────── */
 
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
@@ -143,8 +136,6 @@ static void *polling_thread(void *arg)
     return NULL;
 }
 
-/* ── Helper: attach one tracepoint program (graceful if absent) ──────────── */
-
 static struct bpf_link *attach_prog(const char *name, bool warn)
 {
     struct bpf_program *prog = bpf_object__find_program_by_name(g_col.obj, name);
@@ -164,8 +155,6 @@ static struct bpf_link *attach_prog(const char *name, bool warn)
     }
     return lnk;
 }
-
-/* ── Public API ──────────────────────────────────────────────────────────── */
 
 int ebpf_collector_init(const char *output_dir)
 {
@@ -283,8 +272,6 @@ void ebpf_collector_stop(void)
 }
 
 bool ebpf_collector_is_active(void) { return g_col.active; }
-
-/* ── FD / sport lifecycle (same API as ebpf_collector.c) ────────────────── */
 
 void ebpf_collector_register_fd(int fd, uint64_t session_id)
 {
